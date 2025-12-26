@@ -1,5 +1,9 @@
 # GoREST Blog Plugin
 
+[![CI](https://github.com/nicolasbonnici/gorest-blog/actions/workflows/ci.yml/badge.svg)](https://github.com/nicolasbonnici/gorest-blog/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/nicolasbonnici/gorest-blog)](https://goreportcard.com/report/github.com/nicolasbonnici/gorest-blog)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A production-ready blog plugin for GoREST 0.4+ with built-in migration support, content management, and optional content importing capabilities.
 
 ## Features

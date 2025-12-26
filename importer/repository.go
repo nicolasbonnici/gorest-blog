@@ -47,7 +47,7 @@ func (r *PostgresRepository) Create(ctx context.Context, post *models.Post) erro
 	if err != nil {
 		return fmt.Errorf("failed to create post: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	if rows.Next() {
 		if err := rows.Scan(&post.Id, &post.CreatedAt); err != nil {
@@ -90,7 +90,7 @@ func (r *PostgresRepository) FindByTitle(ctx context.Context, title string) (*mo
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	if !rows.Next() {
 		return nil, nil
@@ -129,7 +129,7 @@ func (r *PostgresRepository) UserExists(ctx context.Context, userID string) (boo
 	if err != nil {
 		return false, fmt.Errorf("failed to check user existence: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	if !rows.Next() {
 		return false, fmt.Errorf("no result from user existence check")
