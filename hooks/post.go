@@ -76,7 +76,7 @@ func (h *PostHooks) SerializeOne(ctx context.Context, operation hooks.Operation,
 
 func (h *PostHooks) SerializeMany(ctx context.Context, operation hooks.Operation, posts *[]models.Post) error {
 	for i := range *posts {
-		h.SerializeOne(ctx, operation, &(*posts)[i])
+		_ = h.SerializeOne(ctx, operation, &(*posts)[i])
 	}
 	return nil
 }

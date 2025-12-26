@@ -40,13 +40,13 @@ func (r *CLIProgressReporter) Start(total int, message string) {
 func (r *CLIProgressReporter) Update(current int, message string) {
 	if r.bar != nil {
 		r.bar.Describe(fmt.Sprintf("[cyan]%s[reset]", truncate(message, 60)))
-		r.bar.Set(current)
+		_ = r.bar.Set(current)
 	}
 }
 
 func (r *CLIProgressReporter) Finish(message string) {
 	if r.bar != nil {
-		r.bar.Finish()
+		_ = r.bar.Finish()
 	}
 	fmt.Println("\n" + message)
 }
@@ -120,7 +120,7 @@ func Run(args []string) int {
 		fmt.Fprintf(os.Stderr, "Error: failed to connect to database: %v\n", err)
 		return 1
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Create repository, reporter, and service
 	repo := importer.NewRepository(db)
