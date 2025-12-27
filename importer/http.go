@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/nicolasbonnici/gorest-blog-plugin/importer/engines"
+	"github.com/nicolasbonnici/gorest-blog/importer/engines"
 	"github.com/nicolasbonnici/gorest/database"
 )
 

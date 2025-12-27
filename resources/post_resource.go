@@ -6,8 +6,8 @@ import (
 	"net/url"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/nicolasbonnici/gorest-blog-plugin/hooks"
-	"github.com/nicolasbonnici/gorest-blog-plugin/models"
+	"github.com/nicolasbonnici/gorest-blog/hooks"
+	"github.com/nicolasbonnici/gorest-blog/models"
 	"github.com/nicolasbonnici/gorest/crud"
 	"github.com/nicolasbonnici/gorest/database"
 	"github.com/nicolasbonnici/gorest/filter"

@@ -4,7 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/nicolasbonnici/gorest/plugin"
 
-	_ "github.com/nicolasbonnici/gorest-blog-plugin/importer/engines/devto"
+	_ "github.com/nicolasbonnici/gorest-blog/importer/engines/devto"
 )
 
 type Plugin struct{}

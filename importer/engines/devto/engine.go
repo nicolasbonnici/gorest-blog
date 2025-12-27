@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/nicolasbonnici/gorest-blog-plugin/importer/engines"
+	"github.com/nicolasbonnici/gorest-blog/importer/engines"
 )
 
 type Engine struct {

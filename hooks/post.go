@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nicolasbonnici/gorest-blog-plugin/models"
-	"github.com/nicolasbonnici/gorest-blog-plugin/types"
+	"github.com/nicolasbonnici/gorest-blog/models"
+	"github.com/nicolasbonnici/gorest-blog/types"
 	"github.com/nicolasbonnici/gorest/hooks"
 )
 
