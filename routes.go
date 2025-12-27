@@ -2,7 +2,7 @@ package blog
 
 import (
 	"github.com/gofiber/fiber/v2"
-	"github.com/nicolasbonnici/gorest-blog-plugin/resources"
+	"github.com/nicolasbonnici/gorest-blog/resources"
 	"github.com/nicolasbonnici/gorest/database"
 )
 

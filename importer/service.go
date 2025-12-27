@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nicolasbonnici/gorest-blog-plugin/models"
-	"github.com/nicolasbonnici/gorest-blog-plugin/importer/engines"
-	"github.com/nicolasbonnici/gorest-blog-plugin/types"
+	"github.com/nicolasbonnici/gorest-blog/models"
+	"github.com/nicolasbonnici/gorest-blog/importer/engines"
+	"github.com/nicolasbonnici/gorest-blog/types"
 )
 
 type Service struct {

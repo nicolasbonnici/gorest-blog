@@ -1,7 +1,7 @@
 package main
 
 import (
-	blog "github.com/nicolasbonnici/gorest-blog-plugin"
+	blog "github.com/nicolasbonnici/gorest-blog"
 	"github.com/nicolasbonnici/gorest"
 	"github.com/nicolasbonnici/gorest/pluginloader"
 

@@ -7,9 +7,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/nicolasbonnici/gorest-blog-plugin/importer"
-	"github.com/nicolasbonnici/gorest-blog-plugin/importer/engines"
-	_ "github.com/nicolasbonnici/gorest-blog-plugin/importer/engines/devto"
+	"github.com/nicolasbonnici/gorest-blog/importer"
+	"github.com/nicolasbonnici/gorest-blog/importer/engines"
+	_ "github.com/nicolasbonnici/gorest-blog/importer/engines/devto"
 	"github.com/nicolasbonnici/gorest/database"
 	_ "github.com/nicolasbonnici/gorest/database/postgres"
 	"github.com/schollz/progressbar/v3"

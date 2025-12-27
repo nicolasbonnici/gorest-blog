@@ -1,4 +1,4 @@
-module github.com/nicolasbonnici/gorest-blog-plugin
+module github.com/nicolasbonnici/gorest-blog
 
 go 1.25.1
 

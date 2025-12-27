@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/nicolasbonnici/gorest-blog-plugin/models"
+	"github.com/nicolasbonnici/gorest-blog/models"
 	"github.com/nicolasbonnici/gorest/crud"
 	"github.com/nicolasbonnici/gorest/database"
 )

@@ -3,7 +3,7 @@ package devto
 import (
 	"fmt"
 
-	"github.com/nicolasbonnici/gorest-blog-plugin/importer/engines"
+	"github.com/nicolasbonnici/gorest-blog/importer/engines"
 )
 
 func MapPost(devtoArticle DevToArticle) engines.Post {

@@ -3,7 +3,7 @@ package importer
 import (
 	"fmt"
 
-	"github.com/nicolasbonnici/gorest-blog-plugin/importer/engines"
+	"github.com/nicolasbonnici/gorest-blog/importer/engines"
 )
 
 type Post = engines.Post

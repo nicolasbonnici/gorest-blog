@@ -8,7 +8,7 @@ import (
 	"github.com/nicolasbonnici/gorest/migrations"
 	"github.com/nicolasbonnici/gorest/plugin"
 
-	_ "github.com/nicolasbonnici/gorest-blog-plugin/importer/engines/devto"
+	_ "github.com/nicolasbonnici/gorest-blog/importer/engines/devto"
 )
 
 //go:embed migrations/*.sql
