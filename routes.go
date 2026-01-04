@@ -8,6 +8,4 @@ import (
 
 func RegisterBlogRoutes(app *fiber.App, db database.Database, paginationLimit, maxPaginationLimit int) {
 	resources.RegisterPostRoutes(app, db, paginationLimit, maxPaginationLimit)
-	resources.RegisterCommentRoutes(app, db, paginationLimit, maxPaginationLimit)
-	resources.RegisterLikeRoutes(app, db, paginationLimit, maxPaginationLimit)
 }

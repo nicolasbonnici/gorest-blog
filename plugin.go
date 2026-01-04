@@ -1,18 +1,13 @@
 package blog
 
 import (
-	"embed"
-
 	"github.com/gofiber/fiber/v2"
+	"github.com/nicolasbonnici/gorest-blog/migrations"
 	"github.com/nicolasbonnici/gorest/database"
-	"github.com/nicolasbonnici/gorest/migrations"
 	"github.com/nicolasbonnici/gorest/plugin"
 
 	_ "github.com/nicolasbonnici/gorest-blog/importer/engines/devto"
 )
-
-//go:embed migrations/*.sql
-var migrationFiles embed.FS
 
 type BlogPlugin struct {
 	config Config
@@ -71,7 +66,7 @@ func (p *BlogPlugin) SetupEndpoints(app *fiber.App) error {
 }
 
 func (p *BlogPlugin) MigrationSource() interface{} {
-	return migrations.NewEmbeddedSource("blog", migrationFiles, "migrations", p.db)
+	return migrations.GetMigrations()
 }
 
 func (p *BlogPlugin) MigrationDependencies() []string {

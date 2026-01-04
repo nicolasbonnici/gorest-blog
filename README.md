@@ -4,34 +4,45 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/nicolasbonnici/gorest-blog)](https://goreportcard.com/report/github.com/nicolasbonnici/gorest-blog)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A production-ready blog plugin for GoREST 0.4+ with built-in migration support, content management, and optional content importing capabilities.
+An autonomous, production-ready blog plugin for GoREST 0.4+ with built-in migration support, post management, and optional content importing capabilities.
 
 ## Features
 
-- **Complete Blog Functionality**: Posts, Comments, and Likes with hierarchical support
-- **Built-in Migrations**: Automatic database schema management using GoREST 0.4 migration system
+- **Post Management**: Complete CRUD operations for blog posts
+- **Built-in Migrations**: Automatic database schema management using Go migrations (no SQL files)
 - **Multi-Database Support**: PostgreSQL, MySQL, and SQLite with dialect-specific migrations
 - **Authentication Integration**: Seamless integration with GoREST auth plugin
 - **Content Importer**: Optional dev.to article importer (extensible to other platforms)
 - **Post Status Management**: Draft and published states with automatic timestamp handling
 - **Smart Hooks**: Automatic user assignment, status filtering for unauthenticated users
-- **RESTful API**: Full CRUD operations for all resources
+- **RESTful API**: Full CRUD operations for posts
+- **Autonomous**: No dependencies on other blog-related plugins
+
+## Architecture
+
+This plugin follows a **microservices-inspired** approach where each concern is separated:
+
+- **gorest-blog**: Manages posts only
+- **gorest-commentable**: Adds polymorphic commenting (optional, separate plugin)
+- **gorest-likeable**: Adds polymorphic likes (optional, separate plugin)
+
+**No plugin depends on another** - your application decides which plugins to enable.
 
 ## Installation
 
 ```bash
-go get github.com/nicolasbonnici/gorest-blog-plugin
+go get github.com/nicolasbonnici/gorest-blog
 ```
 
 ## Requirements
 
 - Go 1.25.1+
-- GoREST 0.4+ (feat/migrations branch)
+- GoREST 0.4+
 - PostgreSQL, MySQL, or SQLite database
 
 ## Quick Start
 
-### Basic Setup
+### Basic Setup (Posts Only)
 
 ```go
 package main
@@ -40,8 +51,8 @@ import (
     "github.com/nicolasbonnici/gorest"
     "github.com/nicolasbonnici/gorest/pluginloader"
 
-    blog "github.com/nicolasbonnici/gorest-blog-plugin"
-    authplugin "github.com/nicolasbonnici/gorest/plugins/auth"
+    blog "github.com/nicolasbonnici/gorest-blog"
+    authplugin "github.com/nicolasbonnici/gorest-auth"
 )
 
 func init() {
@@ -63,96 +74,102 @@ func main() {
 
 ### Configuration (gorest.yaml)
 
+#### Minimal Configuration (Posts Only)
+
 ```yaml
 database:
   url: "${DATABASE_URL}"
 
 plugins:
-  # Auth plugin is required for blog plugin
   - name: auth
     enabled: true
     config:
       jwt_secret: "${JWT_SECRET}"
-      jwt_ttl: 900
 
-  # Blog plugin
   - name: blog
     enabled: true
     config:
       pagination_limit: 10
-      max_pagination_limit: 1000
-      enable_importer: true  # Optional: enable dev.to importer
+      max_pagination_limit: 100
 
-# Migration configuration (GoREST 0.4+)
 migrations:
   enabled: true
-  auto_migrate: true  # Run migrations on startup
+  auto_migrate: true
+```
+
+#### Full Stack (Posts + Comments + Likes)
+
+```yaml
+database:
+  url: "${DATABASE_URL}"
+
+plugins:
+  - name: auth
+    enabled: true
+
+  - name: blog
+    enabled: true
+    config:
+      pagination_limit: 10
+      enable_importer: true
+
+  - name: commentable
+    enabled: true
+    config:
+      allowed_types: ["post"]
+      max_content_length: 10000
+
+  - name: likeable
+    enabled: true
+    config:
+      allowed_types: ["post", "comment"]
+
+migrations:
+  enabled: true
+  auto_migrate: true
 ```
 
 ## Database Schema
 
-The plugin creates the following tables:
+The plugin creates the **posts table only**:
 
 ### Posts Table
 - `id` (UUID, primary key)
 - `user_id` (UUID, foreign key to users)
-- `slug` (TEXT, unique)
+- `slug` (TEXT)
 - `status` (ENUM: 'drafted', 'published')
 - `title` (TEXT)
 - `content` (TEXT)
 - `published_at` (TIMESTAMP)
 - `created_at`, `updated_at` (TIMESTAMP)
 
-### Comments Table
-- `id` (UUID, primary key)
-- `user_id` (UUID, foreign key to users)
-- `post_id` (UUID, foreign key to posts)
-- `parent_id` (UUID, self-reference for nested comments)
-- `content` (TEXT)
-- `created_at`, `updated_at` (TIMESTAMP)
+### Indexes
+- `idx_post_title` on `title`
+- `idx_post_status` on `status`
+- `idx_post_fk_user` on `user_id`
+- `idx_post_slug` on `slug`
 
-### Likes Table (Polymorphic)
-- `id` (UUID, primary key)
-- `liker_id` (UUID, foreign key to users)
-- `liked_id` (UUID, foreign key to users)
-- `likeable` (TEXT: 'post' or 'comment')
-- `likeable_id` (UUID)
-- `liked_at` (TIMESTAMP)
+> **Note**: Comments and likes are managed by separate plugins (`gorest-commentable` and `gorest-likeable`)
 
 ## Migration System
 
-The blog plugin uses GoREST 0.4's migration system with the following features:
+The blog plugin uses **Go migrations** (not SQL files) via GoREST 0.4's migration system.
 
 ### Automatic Migration on Startup
 
 Migrations run automatically when `migrations.auto_migrate: true` is set. The plugin:
 1. Depends on the `auth` plugin (ensures users table exists first)
-2. Creates `post_status` enum type
-3. Creates posts, comments, and likes tables
+2. Creates `post_status` enum type (Postgres) or CHECK constraint (SQLite/MySQL)
+3. Creates posts table
 4. Sets up all necessary indexes
 
-### Manual Migration Control
+### Migration Dependencies
 
-```bash
-# Run pending migrations
-gorest migrate up
-
-# Run migrations for specific plugin
-gorest migrate up --source blog
-
-# Rollback last migration
-gorest migrate down
-
-# Check migration status
-gorest migrate status
+```go
+func (p *BlogPlugin) MigrationDependencies() []string {
+    return []string{"auth"}  // Only depends on auth, NOT on commentable or likeable
+}
 ```
-
-### Migration Files
-
-Located in `migrations/` directory:
-- `20250121000001_create_posts_table.{up,down}.postgres.sql`
-- `20250121000002_create_comments_table.{up,down}.postgres.sql`
-- `20250121000003_create_likes_table.{up,down}.postgres.sql`
 
 ## API Endpoints
 
@@ -164,20 +181,18 @@ Located in `migrations/` directory:
 - `PUT /posts/:id` - Update a post (authenticated)
 - `DELETE /posts/:id` - Delete a post (authenticated)
 
-### Comments
+#### Query Examples
 
-- `GET /comments` - List all comments
-- `GET /comments/:id` - Get a specific comment
-- `POST /comments` - Create a new comment (authenticated)
-- `PUT /comments/:id` - Update a comment (authenticated)
-- `DELETE /comments/:id` - Delete a comment (authenticated)
+```bash
+# Get all published posts
+GET /posts?status=published&orderBy=created_at:desc
 
-### Likes
+# Get user's posts
+GET /posts?userId={uuid}&orderBy=created_at:desc
 
-- `GET /likes` - List all likes
-- `GET /likes/:id` - Get a specific like
-- `POST /likes` - Like a post or comment (authenticated)
-- `DELETE /likes/:id` - Unlike (authenticated)
+# Pagination
+GET /posts?limit=20&page=2
+```
 
 ### Content Importer (Optional)
 
@@ -201,14 +216,14 @@ Located in `migrations/` directory:
 
 Posts automatically assign the authenticated user's ID on creation:
 
-```go
-// Handled automatically by PostHooks
+```bash
 POST /posts
+Authorization: Bearer <token>
 {
   "title": "My Post",
   "content": "Post content"
 }
-// user_id is set from JWT token automatically
+# user_id is set from JWT token automatically
 ```
 
 ### Status Filtering
@@ -225,66 +240,70 @@ curl -H "Authorization: Bearer <token>" http://localhost:8000/posts
 
 ### Auto-Published Timestamp
 
-When a post status changes to 'published', `published_at` is set automatically:
+When a post status changes to 'published', `published_at` is set automatically.
 
-```json
-{
-  "status": "published"
-}
-// published_at set to current timestamp automatically
-```
+## Plugin Composition
 
-### Password Hashing
-
-User passwords are automatically hashed using bcrypt (via UserHooks).
-
-## Advanced Configuration
-
-### Custom Pagination
+### Adding Comments (gorest-commentable)
 
 ```go
-config := map[string]interface{}{
-    "pagination_limit": 20,
-    "max_pagination_limit": 500,
+import commentable "github.com/nicolasbonnici/gorest-commentable"
+
+func init() {
+    pluginloader.RegisterPluginFactory("commentable", commentable.NewPlugin)
 }
 ```
 
-### Plugin Dependencies
+```yaml
+plugins:
+  - name: commentable
+    enabled: true
+    config:
+      allowed_types: ["post"]  # Allow comments on posts
+      max_content_length: 10000
+```
 
-The blog plugin declares a dependency on the auth plugin:
+### Adding Likes (gorest-likeable)
 
 ```go
-func (p *BlogPlugin) MigrationDependencies() []string {
-    return []string{"auth"}
+import likeable "github.com/nicolasbonnici/gorest-likeable"
+
+func init() {
+    pluginloader.RegisterPluginFactory("likeable", likeable.NewPlugin)
 }
 ```
 
-This ensures:
-1. Auth plugin migrations run first
-2. Users table exists before creating posts
-3. Foreign key constraints work correctly
+```yaml
+plugins:
+  - name: likeable
+    enabled: true
+    config:
+      allowed_types: ["post", "comment"]  # Like posts and comments
+```
+
+## Configuration Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `pagination_limit` | `int` | `10` | Default pagination limit |
+| `max_pagination_limit` | `int` | `100` | Maximum allowed pagination limit |
+| `enable_importer` | `bool` | `false` | Enable content import endpoints |
 
 ## Development
 
 ### Project Structure
 
 ```
-gorest-blog-plugin/
+gorest-blog/
 ├── plugin.go              # Main plugin implementation
 ├── config.go              # Configuration structure
 ├── routes.go              # Route registration
-├── migrations/            # Database migrations
-│   ├── 20250121000001_create_posts_table.{up,down}.postgres.sql
-│   ├── 20250121000002_create_comments_table.{up,down}.postgres.sql
-│   └── 20250121000003_create_likes_table.{up,down}.postgres.sql
+├── migrations/            # Go migrations (no SQL files)
+│   └── migrations.go
 ├── models/                # Data models
-│   ├── post.go
-│   ├── comment.go
-│   └── like.go
+│   └── post.go
 ├── resources/             # Resource handlers
-│   ├── post_resource.go
-│   ├── comment_resource.go
-│   └── like_resource.go
+│   └── post_resource.go
 ├── hooks/                 # Lifecycle hooks
 │   ├── post.go
 │   └── user.go
@@ -296,20 +315,22 @@ gorest-blog-plugin/
     └── ...
 ```
 
-### Adding Custom Hooks
+### Run Tests
 
-```go
-type PostHooks struct{}
+```bash
+make test
+```
 
-func (h *PostHooks) StateProcessor(ctx context.Context, operation hooks.Operation, id any, post *models.Post) error {
-    // Custom logic before save
-    return nil
-}
+### Run Linter
 
-func (h *PostHooks) BeforeQuery(ctx context.Context, operation hooks.Operation, query string, args []any) (string, []any, error) {
-    // Modify queries dynamically
-    return query, args, nil
-}
+```bash
+make lint
+```
+
+### Build
+
+```bash
+make build
 ```
 
 ## Production Considerations
@@ -317,21 +338,21 @@ func (h *PostHooks) BeforeQuery(ctx context.Context, operation hooks.Operation, 
 ### Security
 
 - All write operations require authentication
-- Passwords are bcrypt-hashed
 - SQL injection prevention via parameterized queries
 - JWT token validation
+- XSS protection (if using with commentable plugin)
 
 ### Performance
 
-- Indexed columns: slug, status, user_id, post_id
+- Indexed columns: slug, status, user_id
 - Pagination support prevents large result sets
-- Efficient composite indexes for likes
+- Efficient database queries
 
 ### Scalability
 
 - Stateless design (compatible with horizontal scaling)
 - Database connection pooling (via GoREST)
-- Migration checksums prevent drift
+- No cross-plugin dependencies
 
 ## Extending the Plugin
 
@@ -340,7 +361,7 @@ func (h *PostHooks) BeforeQuery(ctx context.Context, operation hooks.Operation, 
 ```go
 package myengine
 
-import "github.com/nicolasbonnici/gorest-blog-plugin/importer/engines"
+import "github.com/nicolasbonnici/gorest-blog/importer/engines"
 
 type MyEngine struct{}
 
@@ -348,31 +369,9 @@ func init() {
     engines.Register("myengine", &MyEngine{})
 }
 
-func (e *MyEngine) FetchByUsername(ctx context.Context, username string) ([]Post, error) {
+func (e *MyEngine) Import(ctx context.Context, config ImportConfig) (*ImportResult, error) {
     // Implementation
 }
-```
-
-### Custom Post Types
-
-Extend the `post_status` enum:
-
-```sql
--- Create migration: 20250121000004_add_archived_status.up.postgres.sql
-ALTER TYPE post_status ADD VALUE 'archived';
-```
-
-## Testing
-
-```bash
-# Run tests
-go test ./...
-
-# Test with coverage
-go test -cover ./...
-
-# Integration tests
-go test -tags=integration ./...
 ```
 
 ## Troubleshooting
@@ -382,10 +381,6 @@ go test -tags=integration ./...
 **Problem**: `migration failed: relation "users" does not exist`
 
 **Solution**: Ensure auth plugin is enabled and loaded before blog plugin.
-
-**Problem**: `migration checksum mismatch`
-
-**Solution**: Migration files were modified after being applied. Use `gorest migrate force` to mark as applied (destructive).
 
 ### Import Errors
 
@@ -399,15 +394,26 @@ MIT License - See LICENSE file for details
 
 ## Contributing
 
-Contributions welcome! Please submit issues and pull requests on GitHub.
+Contributions welcome! Please ensure:
+- All tests pass
+- Code is linted
+- New features have test coverage
+- Documentation is updated
+
+## Part of GoREST Ecosystem
+
+- [GoREST](https://github.com/nicolasbonnici/gorest) - Core framework
+- [GoREST Auth](https://github.com/nicolasbonnici/gorest-auth) - Authentication plugin
+- [GoREST Commentable](https://github.com/nicolasbonnici/gorest-commentable) - Polymorphic commenting (optional)
+- [GoREST Likeable](https://github.com/nicolasbonnici/gorest-likeable) - Polymorphic likes (optional)
 
 ## Changelog
 
+### v2.0.0 (2026-01-02)
+- **BREAKING**: Removed comments and likes - moved to separate plugins
+- Migration to Go migrations (no more SQL files)
+- Autonomous plugin design - no dependencies on other blog plugins
+- Improved plugin composition architecture
+
 ### v1.0.0 (2025-01-21)
-- Initial release
-- PostgreSQL, MySQL, SQLite support
-- GoREST 0.4 migration system integration
-- Dev.to importer
-- Complete CRUD operations
-- Authentication integration
-- Smart hooks and filters
+- Initial release with posts, comments, and likes

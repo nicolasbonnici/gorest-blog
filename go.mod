@@ -4,10 +4,15 @@ go 1.25.1
 
 require (
 	github.com/gofiber/fiber/v2 v2.52.10
-	github.com/nicolasbonnici/gorest v0.4.1
-	github.com/nicolasbonnici/gorest-auth v0.1.4
+	github.com/nicolasbonnici/gorest v0.4.2
+	github.com/nicolasbonnici/gorest-auth v0.1.5
 	github.com/schollz/progressbar/v3 v3.19.0
 	golang.org/x/crypto v0.46.0
+)
+
+replace (
+	github.com/nicolasbonnici/gorest-commentable => ../gorest-commentable
+	github.com/nicolasbonnici/gorest-likeable => ../gorest-likeable
 )
 
 require (
@@ -33,7 +38,6 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.68.0 // indirect
-	github.com/valyala/tcplisten v1.0.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/term v0.38.0 // indirect
