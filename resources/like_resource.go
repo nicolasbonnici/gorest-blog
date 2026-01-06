@@ -47,9 +47,9 @@ func (r *LikeResource) List(c *fiber.Ctx) error {
 	allowedFields := []string{"id", "liker_id", "liked_id", "likeable", "likeable_id", "liked_at", "updated_at", "created_at"}
 
 	queryParams := make(url.Values)
-	c.Context().QueryArgs().VisitAll(func(key, value []byte) {
+	for key, value := range c.Context().QueryArgs().All() {
 		queryParams.Add(string(key), string(value))
-	})
+	}
 
 	filters := filter.NewFilterSet(allowedFields, r.DB.Dialect())
 	if err := filters.ParseFromQuery(queryParams); err != nil {
