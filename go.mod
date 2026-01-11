@@ -4,7 +4,7 @@ go 1.25.1
 
 require (
 	github.com/gofiber/fiber/v2 v2.52.10
-	github.com/nicolasbonnici/gorest v0.4.3
+	github.com/nicolasbonnici/gorest v0.4.5
 	github.com/nicolasbonnici/gorest-auth v0.1.6
 	github.com/schollz/progressbar/v3 v3.19.0
 	golang.org/x/crypto v0.46.0
@@ -36,6 +36,6 @@ require (
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/term v0.38.0 // indirect
-	golang.org/x/text v0.32.0 // indirect
+	golang.org/x/text v0.33.0 // indirect
 	modernc.org/libc v1.67.4 // indirect
 )

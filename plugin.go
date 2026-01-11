@@ -77,3 +77,7 @@ func (p *BlogPlugin) MigrationSource() interface{} {
 func (p *BlogPlugin) MigrationDependencies() []string {
 	return []string{"auth"}
 }
+
+func (p *BlogPlugin) Dependencies() []string {
+	return []string{"auth"}
+}
