@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 	"time"
 
@@ -93,46 +94,28 @@ func isAuthenticated(ctx context.Context) bool {
 }
 
 func addStatusFilter(query string, args []any) (string, []any) {
-	queryLower := strings.ToLower(query)
-
 	newArgs := make([]any, len(args))
 	copy(newArgs, args)
 	newArgs = append(newArgs, types.PostStatusPublished)
 
 	placeholder := fmt.Sprintf("$%d", len(newArgs))
+	statusCondition := fmt.Sprintf("status = %s", placeholder)
 
-	if strings.Contains(queryLower, " where ") {
-		parts := strings.SplitN(query, " WHERE ", 2)
-		if len(parts) == 2 {
-			return parts[0] + " WHERE " + parts[1] + fmt.Sprintf(" AND status = %s", placeholder), newArgs
-		}
-		parts = strings.SplitN(query, " where ", 2)
-		if len(parts) == 2 {
-			return parts[0] + " where " + parts[1] + fmt.Sprintf(" AND status = %s", placeholder), newArgs
-		}
+	// Use regex to find WHERE clause and insert AND condition before ORDER BY/LIMIT/OFFSET
+	re := regexp.MustCompile(`(?i)^(.+\s+WHERE\s+.+?)(\s+(?:ORDER\s+BY|LIMIT|OFFSET)\s+.*)$`)
+
+	if matches := re.FindStringSubmatch(query); matches != nil {
+		return matches[1] + " AND " + statusCondition + matches[2], newArgs
 	}
 
-	if strings.Contains(queryLower, " order by ") {
-		parts := strings.SplitN(query, " ORDER BY ", 2)
-		if len(parts) == 2 {
-			return parts[0] + fmt.Sprintf(" WHERE status = %s ORDER BY ", placeholder) + parts[1], newArgs
-		}
-		parts = strings.SplitN(query, " order by ", 2)
-		if len(parts) == 2 {
-			return parts[0] + fmt.Sprintf(" WHERE status = %s order by ", placeholder) + parts[1], newArgs
-		}
+	if strings.Contains(strings.ToUpper(query), " WHERE ") {
+		return query + " AND " + statusCondition, newArgs
 	}
 
-	if strings.Contains(queryLower, " limit ") {
-		parts := strings.SplitN(query, " LIMIT ", 2)
-		if len(parts) == 2 {
-			return parts[0] + fmt.Sprintf(" WHERE status = %s LIMIT ", placeholder) + parts[1], newArgs
-		}
-		parts = strings.SplitN(query, " limit ", 2)
-		if len(parts) == 2 {
-			return parts[0] + fmt.Sprintf(" WHERE status = %s limit ", placeholder) + parts[1], newArgs
-		}
+	re2 := regexp.MustCompile(`(?i)^(.+?)(\s+(?:ORDER\s+BY|LIMIT|OFFSET)\s+.*)$`)
+	if matches := re2.FindStringSubmatch(query); matches != nil {
+		return matches[1] + " WHERE " + statusCondition + matches[2], newArgs
 	}
 
-	return query + fmt.Sprintf(" WHERE status = %s", placeholder), newArgs
+	return query + " WHERE " + statusCondition, newArgs
 }
