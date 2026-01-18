@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/nicolasbonnici/gorest/hooks"
+	"github.com/nicolasbonnici/gorest/query"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -44,6 +45,18 @@ func (h *UserHooks) AfterQuery(ctx context.Context, operation hooks.Operation, q
 
 func (h *UserHooks) OverrideQuery(ctx context.Context, operation hooks.Operation, id any, model *User) (query string, args []any, skip bool) {
 	return "", nil, false
+}
+
+func (h *UserHooks) ModifySelectQuery(ctx context.Context, operation hooks.Operation, builder *query.SelectBuilder) (*query.SelectBuilder, bool) {
+	return builder, false
+}
+
+func (h *UserHooks) ModifyUpdateQuery(ctx context.Context, operation hooks.Operation, id any, model *User, builder *query.UpdateBuilder) (*query.UpdateBuilder, bool) {
+	return builder, false
+}
+
+func (h *UserHooks) ModifyDeleteQuery(ctx context.Context, operation hooks.Operation, id any, builder *query.DeleteBuilder) (*query.DeleteBuilder, bool) {
+	return builder, false
 }
 
 func (h *UserHooks) SerializeOne(ctx context.Context, operation hooks.Operation, user *User) error {
