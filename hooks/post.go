@@ -2,14 +2,13 @@ package hooks
 
 import (
 	"context"
-	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/nicolasbonnici/gorest-blog/models"
 	"github.com/nicolasbonnici/gorest-blog/types"
 	"github.com/nicolasbonnici/gorest/hooks"
+	"github.com/nicolasbonnici/gorest/query"
 )
 
 type PostHooks struct{}
@@ -41,19 +40,6 @@ func (h *PostHooks) StateProcessor(ctx context.Context, operation hooks.Operatio
 }
 
 func (h *PostHooks) BeforeQuery(ctx context.Context, operation hooks.Operation, query string, args []any) (string, []any, error) {
-	log.Printf("[PostHooks] BeforeQuery called - operation: %s, query: %s", operation, query)
-
-	if operation == hooks.OperationGetAll || operation == hooks.OperationGetByID {
-		if !isAuthenticated(ctx) {
-			modifiedQuery, modifiedArgs := addStatusFilter(query, args)
-			log.Printf("BeforeQuery: Added status filter for unauthenticated user")
-			log.Printf("Original query: %s", query)
-			log.Printf("Modified query: %s", modifiedQuery)
-			return modifiedQuery, modifiedArgs, nil
-		} else {
-			log.Printf("BeforeQuery: Skipping status filter for authenticated user")
-		}
-	}
 	return query, args, nil
 }
 
@@ -63,6 +49,27 @@ func (h *PostHooks) AfterQuery(ctx context.Context, operation hooks.Operation, q
 
 func (h *PostHooks) OverrideQuery(ctx context.Context, operation hooks.Operation, id any, model *models.Post) (query string, args []any, skip bool) {
 	return "", nil, false
+}
+
+func (h *PostHooks) ModifySelectQuery(ctx context.Context, operation hooks.Operation, builder *query.SelectBuilder) (*query.SelectBuilder, bool) {
+	if operation == hooks.OperationGetAll || operation == hooks.OperationGetByID {
+		if !isAuthenticated(ctx) {
+			log.Printf("ModifySelectQuery: Adding status filter for unauthenticated user")
+			builder = builder.Where(query.Eq("status", types.PostStatusPublished))
+			return builder, true
+		} else {
+			log.Printf("ModifySelectQuery: Skipping status filter for authenticated user")
+		}
+	}
+	return builder, false
+}
+
+func (h *PostHooks) ModifyUpdateQuery(ctx context.Context, operation hooks.Operation, id any, model *models.Post, builder *query.UpdateBuilder) (*query.UpdateBuilder, bool) {
+	return builder, false
+}
+
+func (h *PostHooks) ModifyDeleteQuery(ctx context.Context, operation hooks.Operation, id any, builder *query.DeleteBuilder) (*query.DeleteBuilder, bool) {
+	return builder, false
 }
 
 func (h *PostHooks) SerializeOne(ctx context.Context, operation hooks.Operation, post *models.Post) error {
@@ -90,49 +97,4 @@ func isAuthenticated(ctx context.Context) bool {
 	}
 	log.Printf("[Auth] User not authenticated")
 	return false
-}
-
-func addStatusFilter(query string, args []any) (string, []any) {
-	queryLower := strings.ToLower(query)
-
-	newArgs := make([]any, len(args))
-	copy(newArgs, args)
-	newArgs = append(newArgs, types.PostStatusPublished)
-
-	placeholder := fmt.Sprintf("$%d", len(newArgs))
-
-	if strings.Contains(queryLower, " where ") {
-		parts := strings.SplitN(query, " WHERE ", 2)
-		if len(parts) == 2 {
-			return parts[0] + " WHERE " + parts[1] + fmt.Sprintf(" AND status = %s", placeholder), newArgs
-		}
-		parts = strings.SplitN(query, " where ", 2)
-		if len(parts) == 2 {
-			return parts[0] + " where " + parts[1] + fmt.Sprintf(" AND status = %s", placeholder), newArgs
-		}
-	}
-
-	if strings.Contains(queryLower, " order by ") {
-		parts := strings.SplitN(query, " ORDER BY ", 2)
-		if len(parts) == 2 {
-			return parts[0] + fmt.Sprintf(" WHERE status = %s ORDER BY ", placeholder) + parts[1], newArgs
-		}
-		parts = strings.SplitN(query, " order by ", 2)
-		if len(parts) == 2 {
-			return parts[0] + fmt.Sprintf(" WHERE status = %s order by ", placeholder) + parts[1], newArgs
-		}
-	}
-
-	if strings.Contains(queryLower, " limit ") {
-		parts := strings.SplitN(query, " LIMIT ", 2)
-		if len(parts) == 2 {
-			return parts[0] + fmt.Sprintf(" WHERE status = %s LIMIT ", placeholder) + parts[1], newArgs
-		}
-		parts = strings.SplitN(query, " limit ", 2)
-		if len(parts) == 2 {
-			return parts[0] + fmt.Sprintf(" WHERE status = %s limit ", placeholder) + parts[1], newArgs
-		}
-	}
-
-	return query + fmt.Sprintf(" WHERE status = %s", placeholder), newArgs
 }
