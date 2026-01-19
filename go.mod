@@ -4,7 +4,7 @@ go 1.25.1
 
 require (
 	github.com/gofiber/fiber/v2 v2.52.10
-	github.com/nicolasbonnici/gorest v0.4.6
+	github.com/nicolasbonnici/gorest v0.4.7
 	github.com/nicolasbonnici/gorest-auth v0.1.6
 	github.com/schollz/progressbar/v3 v3.19.0
 	golang.org/x/crypto v0.47.0
