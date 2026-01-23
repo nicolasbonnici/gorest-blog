@@ -4,7 +4,7 @@ go 1.25.1
 
 require (
 	github.com/gofiber/fiber/v2 v2.52.10
-	github.com/nicolasbonnici/gorest v0.4.6
+	github.com/nicolasbonnici/gorest v0.4.7
 	github.com/nicolasbonnici/gorest-auth v0.1.6
 	github.com/schollz/progressbar/v3 v3.19.0
 	golang.org/x/crypto v0.47.0
@@ -13,7 +13,7 @@ require (
 require (
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/clipperhouse/stringish v0.1.1 // indirect
-	github.com/clipperhouse/uax29/v2 v2.3.0 // indirect
+	github.com/clipperhouse/uax29/v2 v2.3.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.12 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect

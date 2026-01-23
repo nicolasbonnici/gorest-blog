@@ -50,11 +50,3 @@ plugins:
     config:
       jwt_secret: "${JWT_SECRET}"
       jwt_ttl: 900
-
-  # Blog plugin
-  - name: blog
-    enabled: true
-    config:
-      pagination_limit: 10
-      max_pagination_limit: 1000
-      enable_importer: true

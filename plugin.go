@@ -4,8 +4,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/nicolasbonnici/gorest/database"
 	"github.com/nicolasbonnici/gorest/plugin"
-
-	_ "github.com/nicolasbonnici/gorest-blog/importer/engines/devto"
 )
 
 type BlogPlugin struct {
@@ -51,16 +49,6 @@ func (p *BlogPlugin) Handler() fiber.Handler {
 }
 
 func (p *BlogPlugin) SetupEndpoints(app *fiber.App) error {
-	if p.db == nil {
-		return nil
-	}
-
-	RegisterBlogRoutes(app, p.db, p.config.PaginationLimit, p.config.MaxPaginationLimit)
-
-	if p.config.EnableImporter {
-		RegisterImporterRoutes(app, p.db)
-	}
-
 	return nil
 }
 
