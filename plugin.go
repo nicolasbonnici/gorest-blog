@@ -69,3 +69,16 @@ func (p *BlogPlugin) MigrationDependencies() []string {
 func (p *BlogPlugin) Dependencies() []string {
 	return []string{"auth"}
 }
+
+func (p *BlogPlugin) GetOpenAPIResources() []plugin.OpenAPIResource {
+	return []plugin.OpenAPIResource{{
+		Name:          "post",
+		PluralName:    "posts",
+		BasePath:      "/posts",
+		Tags:          []string{"Blog"},
+		ResponseModel: Post{},
+		CreateModel:   CreatePostRequest{},
+		UpdateModel:   UpdatePostRequest{},
+		Description:   "Blog post management",
+	}}
+}
