@@ -3,10 +3,10 @@ package blog
 import "github.com/nicolasbonnici/gorest/database"
 
 type Config struct {
-	Database         database.Database
-	PaginationLimit  int
+	Database           database.Database
+	PaginationLimit    int
 	MaxPaginationLimit int
-	EnableImporter   bool
+	EnableImporter     bool
 }
 
 func DefaultConfig() Config {

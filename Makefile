@@ -14,11 +14,9 @@ install: ## Install development tools
 
 test: ## Run tests with coverage
 	@echo "Running tests..."
-	@go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+	@go test -v -race ./...
 	@echo ""
-	@echo "Coverage summary:"
-	@go tool cover -func=coverage.out
-	@rm -f coverage.out
+	@echo "Tests completed"
 
 lint: ## Run linter
 	@echo "Running golangci-lint..."
@@ -38,3 +36,6 @@ clean: ## Clean build artifacts and caches
 	@go clean -cache -testcache -modcache
 	@rm -f coverage.out
 	@echo "✓ Cleaned"
+
+generate:
+	@DATABASE_URL=$(DATABASE_URL) JWT_SECRET=$(JWT_SECRET) go run github.com/nicolasbonnici/gorest/cmd/codegen all

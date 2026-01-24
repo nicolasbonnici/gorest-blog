@@ -2,6 +2,7 @@ package blog
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"github.com/nicolasbonnici/gorest-blog/migrations"
 	"github.com/nicolasbonnici/gorest/database"
 	"github.com/nicolasbonnici/gorest/plugin"
 )
@@ -49,7 +50,16 @@ func (p *BlogPlugin) Handler() fiber.Handler {
 }
 
 func (p *BlogPlugin) SetupEndpoints(app *fiber.App) error {
+	if p.db == nil {
+		return nil
+	}
+
+	RegisterRoutes(app, p.db, &p.config)
 	return nil
+}
+
+func (p *BlogPlugin) MigrationSource() interface{} {
+	return migrations.GetMigrations()
 }
 
 func (p *BlogPlugin) MigrationDependencies() []string {
