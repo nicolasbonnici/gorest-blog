@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/nicolasbonnici/gorest-blog/importer"
 	"github.com/nicolasbonnici/gorest-blog/importer/engines"
 	"github.com/nicolasbonnici/gorest-blog/types"
@@ -125,8 +126,17 @@ func (s *ImporterService) Import(ctx context.Context, opts importer.ImportOption
 func (s *ImporterService) importPost(ctx context.Context, post importer.Post, opts importer.ImportOptions) (string, error) {
 	postModel := s.postToModel(post, opts.UserID)
 
+	// Default locale for imported content (could be configurable)
+	defaultLocale := "en"
+	translations := map[string]*PostTranslationContent{
+		defaultLocale: {
+			Title:   post.Title,
+			Content: post.Content,
+		},
+	}
+
 	if opts.DryRun {
-		existing, err := s.findByTitle(ctx, post.Title)
+		existing, err := s.findBySlug(ctx, postModel.Slug)
 		if err == nil && existing != nil {
 			if opts.UpdateExisting {
 				return "updated", nil
@@ -136,19 +146,50 @@ func (s *ImporterService) importPost(ctx context.Context, post importer.Post, op
 		return "created", nil
 	}
 
-	existing, err := s.findByTitle(ctx, post.Title)
+	existing, err := s.findBySlug(ctx, postModel.Slug)
 	if err == nil && existing != nil {
 		if opts.UpdateExisting {
+			// Update existing post and translations
 			if err := s.crud.Update(ctx, existing.Id, postModel); err != nil {
 				return "", fmt.Errorf("update failed: %w", err)
 			}
+
+			// Update translation for default locale
+			translationService := NewTranslationService(s.db)
+			var userUUID *uuid.UUID
+			if postModel.UserId != nil {
+				parsed, err := uuid.Parse(*postModel.UserId)
+				if err == nil {
+					userUUID = &parsed
+				}
+			}
+			if err := translationService.UpdateTranslation(ctx, existing.Id, defaultLocale, post.Title, post.Content, userUUID); err != nil {
+				return "", fmt.Errorf("failed to update translation: %w", err)
+			}
+
 			return "updated", nil
 		}
 		return "skipped", nil
 	}
 
+	// Create new post
 	if err := s.crud.Create(ctx, postModel); err != nil {
 		return "", fmt.Errorf("create failed: %w", err)
+	}
+
+	// Create translations
+	translationService := NewTranslationService(s.db)
+	var userUUID *uuid.UUID
+	if postModel.UserId != nil {
+		parsed, err := uuid.Parse(*postModel.UserId)
+		if err == nil {
+			userUUID = &parsed
+		}
+	}
+	if err := translationService.CreateTranslations(ctx, postModel.Id, translations, userUUID); err != nil {
+		// Rollback: delete the post if translation creation fails
+		_ = s.crud.Delete(ctx, postModel.Id)
+		return "", fmt.Errorf("failed to create translations: %w", err)
 	}
 
 	return "created", nil
@@ -171,8 +212,6 @@ func (s *ImporterService) postToModel(post importer.Post, userID string) Post {
 	}
 
 	postModel := Post{
-		Title:       post.Title,
-		Content:     post.Content,
 		Slug:        slug,
 		Status:      status,
 		PublishedAt: publishedAt,
@@ -214,11 +253,11 @@ func (s *ImporterService) userExists(ctx context.Context, userID string) (bool, 
 	return rows.Next(), nil
 }
 
-func (s *ImporterService) findByTitle(ctx context.Context, title string) (*Post, error) {
+func (s *ImporterService) findBySlug(ctx context.Context, slug string) (*Post, error) {
 	sql, args, err := s.qb.
-		Select("id", "user_id", "slug", "status", "title", "content", "published_at", "updated_at", "created_at").
+		Select("id", "user_id", "slug", "status", "published_at", "updated_at", "created_at").
 		From("post").
-		Where(query.Eq("title", title)).
+		Where(query.Eq("slug", slug)).
 		Limit(1).
 		Build()
 	if err != nil {
@@ -241,8 +280,6 @@ func (s *ImporterService) findByTitle(ctx context.Context, title string) (*Post,
 		&post.UserId,
 		&post.Slug,
 		&post.Status,
-		&post.Title,
-		&post.Content,
 		&post.PublishedAt,
 		&post.UpdatedAt,
 		&post.CreatedAt,

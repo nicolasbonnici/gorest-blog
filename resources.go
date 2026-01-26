@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	auth "github.com/nicolasbonnici/gorest-auth"
 	"github.com/nicolasbonnici/gorest-blog/types"
 	"github.com/nicolasbonnici/gorest/crud"
@@ -47,7 +48,7 @@ func (r *PostResource) List(c *fiber.Ctx) error {
 	offset := (page - 1) * limit
 	includeCount := c.Query("count", "true") != "false"
 
-	allowedFields := []string{"id", "user_id", "slug", "status", "title", "content", "published_at", "updated_at", "created_at"}
+	allowedFields := []string{"id", "user_id", "slug", "status", "published_at", "updated_at", "created_at"}
 
 	queryParams := make(url.Values)
 	for key, value := range c.Context().QueryArgs().All() {
@@ -73,7 +74,9 @@ func (r *PostResource) List(c *fiber.Ctx) error {
 		}
 	}
 
-	result, err := r.CRUD.GetAllPaginated(auth.Context(c), crud.PaginationOptions{
+	ctx := auth.Context(c)
+
+	result, err := r.CRUD.GetAllPaginated(ctx, crud.PaginationOptions{
 		Limit:        limit,
 		Offset:       offset,
 		IncludeCount: includeCount,
@@ -84,14 +87,32 @@ func (r *PostResource) List(c *fiber.Ctx) error {
 		return pagination.SendPaginatedError(c, 500, err.Error())
 	}
 
+	// Always fetch translations for all posts
+	translationService := NewTranslationService(r.DB)
+	for i := range result.Items {
+		translations, err := translationService.ListTranslations(ctx, result.Items[i].Id)
+		if err == nil && len(translations) > 0 {
+			result.Items[i].Translations = translations
+		}
+	}
+
 	return pagination.SendHydraCollection(c, result.Items, result.Total, limit, page, r.PaginationLimit)
 }
 
 func (r *PostResource) Get(c *fiber.Ctx) error {
 	id := c.Params("id")
-	item, err := r.CRUD.GetByID(auth.Context(c), id)
+	ctx := auth.Context(c)
+
+	item, err := r.CRUD.GetByID(ctx, id)
 	if err != nil {
 		return c.Status(404).JSON(fiber.Map{"error": "Not found"})
+	}
+
+	// Always fetch translations
+	translationService := NewTranslationService(r.DB)
+	translations, err := translationService.ListTranslations(ctx, id)
+	if err == nil && len(translations) > 0 {
+		item.Translations = translations
 	}
 
 	return response.SendFormatted(c, 200, item)
@@ -110,8 +131,6 @@ func (r *PostResource) Create(c *fiber.Ctx) error {
 	var item Post
 	item.Slug = req.Slug
 	item.Status = req.Status
-	item.Title = req.Title
-	item.Content = req.Content
 
 	if user := auth.GetAuthenticatedUser(c); user != nil {
 		item.UserId = &user.UserID
@@ -123,13 +142,36 @@ func (r *PostResource) Create(c *fiber.Ctx) error {
 	}
 
 	ctx := auth.Context(c)
+
+	// Create post record without title/content
 	if err := r.CRUD.Create(ctx, item); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	// Create translations for all locales
+	translationService := NewTranslationService(r.DB)
+	var userUUID *uuid.UUID
+	if item.UserId != nil {
+		parsed, err := uuid.Parse(*item.UserId)
+		if err == nil {
+			userUUID = &parsed
+		}
+	}
+	if err := translationService.CreateTranslations(ctx, item.Id, req.Translations, userUUID); err != nil {
+		// Rollback: delete the post if translation creation fails
+		_ = r.CRUD.Delete(ctx, item.Id)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to create translations: " + err.Error()})
+	}
+
+	// Fetch post with translations
 	created, err := r.CRUD.GetByID(ctx, item.Id)
 	if err != nil {
 		return response.SendFormatted(c, 201, item)
+	}
+
+	translations, err := translationService.ListTranslations(ctx, item.Id)
+	if err == nil && len(translations) > 0 {
+		created.Translations = translations
 	}
 
 	return response.SendFormatted(c, 201, created)
@@ -147,44 +189,63 @@ func (r *PostResource) Update(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	existing, err := r.CRUD.GetByID(auth.Context(c), id)
+	ctx := auth.Context(c)
+
+	// Fetch existing post to verify ownership
+	existing, err := r.CRUD.GetByID(ctx, id)
 	if err != nil {
 		return c.Status(404).JSON(fiber.Map{"error": "Not found"})
 	}
 
-	if req.Slug != nil {
-		existing.Slug = *req.Slug
-	}
-	if req.Status != nil {
-		wasPublished := existing.Status == types.PostStatusPublished
-		existing.Status = *req.Status
-
-		if !wasPublished && *req.Status == types.PostStatusPublished {
-			now := time.Now()
-			existing.PublishedAt = &now
+	// Update the translation for the specified locale
+	translationService := NewTranslationService(r.DB)
+	var userUUID *uuid.UUID
+	if existing.UserId != nil {
+		parsed, err := uuid.Parse(*existing.UserId)
+		if err == nil {
+			userUUID = &parsed
 		}
 	}
-	if req.Title != nil {
-		existing.Title = *req.Title
-	}
-	if req.Content != nil {
-		existing.Content = *req.Content
+	if err := translationService.UpdateTranslation(ctx, id, req.Locale, req.Title, req.Content, userUUID); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to update translation: " + err.Error()})
 	}
 
+	// Update post's updated_at timestamp
 	now := time.Now()
 	existing.UpdatedAt = &now
 
-	if err := r.CRUD.Update(auth.Context(c), id, *existing); err != nil {
+	if err := r.CRUD.Update(ctx, id, *existing); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	return response.SendFormatted(c, 200, existing)
+	// Fetch post with all translations
+	updated, err := r.CRUD.GetByID(ctx, id)
+	if err != nil {
+		updated = existing
+	}
+
+	translations, err := translationService.ListTranslations(ctx, id)
+	if err == nil && len(translations) > 0 {
+		updated.Translations = translations
+	}
+
+	return response.SendFormatted(c, 200, updated)
 }
 
 func (r *PostResource) Delete(c *fiber.Ctx) error {
 	id := c.Params("id")
-	if err := r.CRUD.Delete(auth.Context(c), id); err != nil {
+	ctx := auth.Context(c)
+
+	// Delete all translations first
+	translationService := NewTranslationService(r.DB)
+	if err := translationService.DeleteAllTranslations(ctx, id); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to delete translations: " + err.Error()})
+	}
+
+	// Delete the post
+	if err := r.CRUD.Delete(ctx, id); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
 	}
+
 	return c.SendStatus(204)
 }
