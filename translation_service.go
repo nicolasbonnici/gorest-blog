@@ -37,14 +37,6 @@ func (s *TranslationService) CreateTranslations(ctx context.Context, postID stri
 		return fmt.Errorf("invalid post ID: %w", err)
 	}
 
-	exists, err := s.postExists(ctx, postUUID)
-	if err != nil {
-		return fmt.Errorf("failed to validate post: %w", err)
-	}
-	if !exists {
-		return errors.New("post not found")
-	}
-
 	if len(translations) == 0 {
 		return errors.New("at least one translation is required")
 	}

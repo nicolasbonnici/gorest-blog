@@ -129,6 +129,7 @@ func (r *PostResource) Create(c *fiber.Ctx) error {
 	}
 
 	var item Post
+	item.Id = uuid.New().String() // Generate UUID before insert
 	item.Slug = req.Slug
 	item.Status = req.Status
 

@@ -37,8 +37,6 @@ func createPostsTableUp(ctx context.Context, db database.Database) error {
 			user_id UUID REFERENCES users(id) ON DELETE SET NULL,
 			slug TEXT NOT NULL,
 			status post_status NOT NULL DEFAULT 'drafted',
-			title TEXT NOT NULL,
-			content TEXT NOT NULL,
 			published_at TIMESTAMP(0) WITH TIME ZONE,
 			updated_at TIMESTAMP(0) WITH TIME ZONE,
 			created_at TIMESTAMP(0) WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -48,13 +46,10 @@ func createPostsTableUp(ctx context.Context, db database.Database) error {
 			user_id CHAR(36),
 			slug VARCHAR(255) NOT NULL,
 			status ENUM('drafted', 'published') NOT NULL DEFAULT 'drafted',
-			title TEXT NOT NULL,
-			content TEXT NOT NULL,
 			published_at TIMESTAMP NULL,
 			updated_at TIMESTAMP NULL,
 			created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-			INDEX idx_post_title (title(255)),
 			INDEX idx_post_status (status),
 			INDEX idx_post_fk_user (user_id),
 			INDEX idx_post_slug (slug)
@@ -64,8 +59,6 @@ func createPostsTableUp(ctx context.Context, db database.Database) error {
 			user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
 			slug TEXT NOT NULL,
 			status TEXT NOT NULL DEFAULT 'drafted' CHECK(status IN ('drafted', 'published')),
-			title TEXT NOT NULL,
-			content TEXT NOT NULL,
 			published_at TEXT,
 			updated_at TEXT,
 			created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -76,9 +69,6 @@ func createPostsTableUp(ctx context.Context, db database.Database) error {
 
 	// Create indexes for Postgres and SQLite
 	if db.DriverName() == "postgres" {
-		if err := migrations.CreateIndex(ctx, db, "idx_post_title", "post", "title"); err != nil {
-			return err
-		}
 		if err := migrations.CreateIndex(ctx, db, "idx_post_status", "post", "status"); err != nil {
 			return err
 		}
@@ -91,9 +81,6 @@ func createPostsTableUp(ctx context.Context, db database.Database) error {
 	}
 
 	if db.DriverName() == "sqlite" {
-		if err := migrations.CreateIndex(ctx, db, "idx_post_title", "post", "title"); err != nil {
-			return err
-		}
 		if err := migrations.CreateIndex(ctx, db, "idx_post_status", "post", "status"); err != nil {
 			return err
 		}
@@ -111,7 +98,6 @@ func createPostsTableUp(ctx context.Context, db database.Database) error {
 func createPostsTableDown(ctx context.Context, db database.Database) error {
 	// Drop indexes first
 	if db.DriverName() == "postgres" || db.DriverName() == "sqlite" {
-		_ = migrations.DropIndex(ctx, db, "idx_post_title", "post")
 		_ = migrations.DropIndex(ctx, db, "idx_post_status", "post")
 		_ = migrations.DropIndex(ctx, db, "idx_post_fk_user", "post")
 		_ = migrations.DropIndex(ctx, db, "idx_post_slug", "post")
