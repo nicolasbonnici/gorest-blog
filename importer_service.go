@@ -212,6 +212,7 @@ func (s *ImporterService) postToModel(post importer.Post, userID string) Post {
 	}
 
 	postModel := Post{
+		Id:          uuid.New().String(),
 		Slug:        slug,
 		Status:      status,
 		PublishedAt: publishedAt,
