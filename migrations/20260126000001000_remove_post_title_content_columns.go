@@ -42,7 +42,7 @@ func removePostTitleContentColumnsUp(ctx context.Context, db database.Database) 
 	} else if db.DriverName() == "sqlite" {
 		rows, err := db.Query(ctx, `PRAGMA table_info(post)`)
 		if err == nil {
-			defer rows.Close()
+			defer func() { _ = rows.Close() }()
 			for rows.Next() {
 				var cid int
 				var name string

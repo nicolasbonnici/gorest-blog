@@ -1,4 +1,4 @@
-.PHONY: help test lint lint-fix build clean install
+.PHONY: help test lint lint-fix build clean install coverage
 
 # Default target
 .DEFAULT_GOAL := help
@@ -12,11 +12,19 @@ install: ## Install development tools
 	@which golangci-lint > /dev/null || curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin latest
 	@echo "✓ Tools installed"
 
-test: ## Run tests with coverage
+test: ## Run tests with race detector
 	@echo "Running tests..."
 	@go test -v -race ./...
+
+coverage: ## Run tests with coverage
+	@echo "Running tests with coverage..."
+	@go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 	@echo ""
-	@echo "Tests completed"
+	@echo "Coverage summary:"
+	@go tool cover -func=coverage.out
+	@echo ""
+	@echo "To view HTML coverage report, run:"
+	@echo "  go tool cover -html=coverage.out"
 
 lint: ## Run linter
 	@echo "Running golangci-lint..."
