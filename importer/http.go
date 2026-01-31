@@ -11,12 +11,12 @@ import (
 )
 
 type ImportRequest struct {
-	Username       string `json:"username,omitempty"`
-	ArticleURL     string `json:"url,omitempty"`
-	ArticleID      string `json:"id,omitempty"`
-	UserID         string `json:"user_id"`
-	UpdateExisting bool   `json:"update_existing,omitempty"`
-	DryRun         bool   `json:"dry_run,omitempty"`
+	Username   string `json:"username,omitempty"`
+	ArticleURL string `json:"url,omitempty"`
+	ArticleID  string `json:"id,omitempty"`
+	UserID     string `json:"user_id"`
+	Truncate   bool   `json:"truncate,omitempty"`
+	DryRun     bool   `json:"dry_run,omitempty"`
 }
 
 type ImportResponse struct {
@@ -71,13 +71,13 @@ func executeImport(ctx context.Context, db database.Database, engine string, req
 	service := serviceFactory(db, reporter)
 
 	opts := ImportOptions{
-		Source:         engine,
-		UserID:         req.UserID,
-		Username:       req.Username,
-		ArticleURL:     req.ArticleURL,
-		ArticleID:      req.ArticleID,
-		UpdateExisting: req.UpdateExisting,
-		DryRun:         req.DryRun,
+		Source:     engine,
+		UserID:     req.UserID,
+		Username:   req.Username,
+		ArticleURL: req.ArticleURL,
+		ArticleID:  req.ArticleID,
+		Truncate:   req.Truncate,
+		DryRun:     req.DryRun,
 	}
 
 	result, err := service.Import(ctx, opts)

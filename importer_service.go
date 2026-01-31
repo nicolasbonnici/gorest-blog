@@ -81,6 +81,13 @@ func (s *ImporterService) Import(ctx context.Context, opts importer.ImportOption
 		Errors:       make([]error, 0),
 	}
 
+	// Truncate existing posts if requested
+	if opts.Truncate && !opts.DryRun {
+		if err := s.truncatePosts(ctx); err != nil {
+			return nil, fmt.Errorf("failed to truncate posts: %w", err)
+		}
+	}
+
 	if s.reporter != nil {
 		s.reporter.Start(len(posts), fmt.Sprintf("Importing %d posts from %s", len(posts), opts.Source))
 	}
@@ -138,38 +145,32 @@ func (s *ImporterService) importPost(ctx context.Context, post importer.Post, op
 	if opts.DryRun {
 		existing, err := s.findBySlug(ctx, postModel.Slug)
 		if err == nil && existing != nil {
-			if opts.UpdateExisting {
-				return "updated", nil
-			}
-			return "skipped", nil
+			return "updated", nil
 		}
 		return "created", nil
 	}
 
 	existing, err := s.findBySlug(ctx, postModel.Slug)
 	if err == nil && existing != nil {
-		if opts.UpdateExisting {
-			// Update existing post and translations
-			if err := s.crud.Update(ctx, existing.Id, postModel); err != nil {
-				return "", fmt.Errorf("update failed: %w", err)
-			}
-
-			// Update translation for default locale
-			translationService := NewTranslationService(s.db)
-			var userUUID *uuid.UUID
-			if postModel.UserId != nil {
-				parsed, err := uuid.Parse(*postModel.UserId)
-				if err == nil {
-					userUUID = &parsed
-				}
-			}
-			if err := translationService.UpdateTranslation(ctx, existing.Id, defaultLocale, post.Title, post.Content, userUUID); err != nil {
-				return "", fmt.Errorf("failed to update translation: %w", err)
-			}
-
-			return "updated", nil
+		// Always update existing post (upsert behavior)
+		if err := s.crud.Update(ctx, existing.Id, postModel); err != nil {
+			return "", fmt.Errorf("update failed: %w", err)
 		}
-		return "skipped", nil
+
+		// Update translation for default locale
+		translationService := NewTranslationService(s.db)
+		var userUUID *uuid.UUID
+		if postModel.UserId != nil {
+			parsed, err := uuid.Parse(*postModel.UserId)
+			if err == nil {
+				userUUID = &parsed
+			}
+		}
+		if err := translationService.UpdateTranslation(ctx, existing.Id, defaultLocale, post.Title, post.Content, userUUID); err != nil {
+			return "", fmt.Errorf("failed to update translation: %w", err)
+		}
+
+		return "updated", nil
 	}
 
 	// Create new post
@@ -252,6 +253,38 @@ func (s *ImporterService) userExists(ctx context.Context, userID string) (bool, 
 	defer func() { _ = rows.Close() }()
 
 	return rows.Next(), nil
+}
+
+func (s *ImporterService) truncatePosts(ctx context.Context) error {
+	// Delete related data first (translatable table uses polymorphic relationship)
+	// Delete translations for posts
+	deleteTranslations := "DELETE FROM translatable WHERE translatable = 'post'"
+	if _, err := s.db.Exec(ctx, deleteTranslations); err != nil {
+		return fmt.Errorf("failed to delete post translations: %w", err)
+	}
+
+	// Delete posts (CASCADE will handle comments, likes, and other foreign key relations)
+	var truncateSQL string
+
+	switch s.db.DriverName() {
+	case "postgres":
+		// Use TRUNCATE CASCADE to automatically delete related records with foreign keys
+		truncateSQL = "TRUNCATE TABLE post CASCADE"
+	case "mysql":
+		// MySQL doesn't support CASCADE with TRUNCATE, use DELETE
+		truncateSQL = "DELETE FROM post"
+	case "sqlite":
+		// SQLite doesn't support TRUNCATE, use DELETE
+		truncateSQL = "DELETE FROM post"
+	default:
+		truncateSQL = "DELETE FROM post"
+	}
+
+	if _, err := s.db.Exec(ctx, truncateSQL); err != nil {
+		return fmt.Errorf("failed to truncate posts: %w", err)
+	}
+
+	return nil
 }
 
 func (s *ImporterService) findBySlug(ctx context.Context, slug string) (*Post, error) {
