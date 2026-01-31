@@ -9,6 +9,7 @@ A production-ready blog plugin for GoREST 0.4+ with built-in migration support, 
 ## Features
 
 - **Complete Blog Functionality**: Posts, Comments, and Likes with hierarchical support
+- **Multi-Language Support** (Optional): Translate post titles and content into multiple languages (see [TRANSLATIONS.md](TRANSLATIONS.md))
 - **Built-in Migrations**: Automatic database schema management using GoREST 0.4 migration system
 - **Multi-Database Support**: PostgreSQL, MySQL, and SQLite with dialect-specific migrations
 - **Authentication Integration**: Seamless integration with GoREST auth plugin
@@ -75,6 +76,16 @@ plugins:
       jwt_secret: "${JWT_SECRET}"
       jwt_ttl: 900
 
+  # Translatable plugin (REQUIRED for blog plugin)
+  # Must be loaded before blog plugin
+  - name: translatable
+    enabled: true
+    config:
+      allowed_types: ["post"]  # Enable post translations
+      supported_locales: ["en", "fr", "es", "de"]
+      default_locale: "en"
+      max_content_length: 102400  # 100KB
+
   # Blog plugin
   - name: blog
     enabled: true
@@ -98,10 +109,10 @@ The plugin creates the following tables:
 - `user_id` (UUID, foreign key to users)
 - `slug` (TEXT, unique)
 - `status` (ENUM: 'drafted', 'published')
-- `title` (TEXT)
-- `content` (TEXT)
 - `published_at` (TIMESTAMP)
 - `created_at`, `updated_at` (TIMESTAMP)
+
+**Note**: Post titles and content are stored in the `translatable` table (see [Multi-Language Support](#multi-language-support-required))
 
 ### Comments Table
 - `id` (UUID, primary key)
@@ -159,10 +170,84 @@ Located in `migrations/` directory:
 ### Posts
 
 - `GET /posts` - List all published posts (public) or all posts (authenticated)
+  - Always includes translations in response
 - `GET /posts/:id` - Get a specific post
-- `POST /posts` - Create a new post (authenticated)
-- `PUT /posts/:id` - Update a post (authenticated)
-- `DELETE /posts/:id` - Delete a post (authenticated)
+  - Always includes translations in response
+- `POST /posts` - Create a new post with translations (authenticated)
+- `PUT /posts/:id` - Update a post translation for a specific locale (authenticated)
+- `DELETE /posts/:id` - Delete a post and all its translations (authenticated)
+
+#### POST /posts - Create Post
+
+**Request:**
+```json
+{
+  "slug": "my-post",
+  "status": "published",
+  "translations": {
+    "en": {
+      "title": "My Post",
+      "content": "Post content..."
+    },
+    "fr": {
+      "title": "Mon Article",
+      "content": "Contenu de l'article..."
+    }
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "id": "post-uuid",
+  "slug": "my-post",
+  "status": "published",
+  "publishedAt": "2024-01-15T10:00:00Z",
+  "translations": {
+    "en": {
+      "title": "My Post",
+      "content": "Post content..."
+    },
+    "fr": {
+      "title": "Mon Article",
+      "content": "Contenu de l'article..."
+    }
+  }
+}
+```
+
+#### PUT /posts/:id - Update Translation
+
+**Request:**
+```json
+{
+  "locale": "en",
+  "title": "Updated Title",
+  "content": "Updated content..."
+}
+```
+
+**Response:**
+```json
+{
+  "id": "post-uuid",
+  "slug": "my-post",
+  "status": "published",
+  "publishedAt": "2024-01-15T10:00:00Z",
+  "updatedAt": "2024-01-15T11:00:00Z",
+  "translations": {
+    "en": {
+      "title": "Updated Title",
+      "content": "Updated content..."
+    },
+    "fr": {
+      "title": "Mon Article",
+      "content": "Contenu de l'article..."
+    }
+  }
+}
+```
 
 ### Comments
 
@@ -194,6 +279,122 @@ Located in `migrations/` directory:
   "dry_run": false
 }
 ```
+
+## Multi-Language Support (REQUIRED)
+
+⚠️ **BREAKING CHANGE**: As of v2.0.0, the blog plugin REQUIRES the [gorest-translatable](https://github.com/nicolasbonnici/gorest-translatable) plugin. Post titles and content are now stored exclusively in the translatable table.
+
+**Migration Required**: Existing installations must run the migration to move title/content data to the translatable table before upgrading. See [Migration Guide](#migration-guide) below.
+
+To use the blog plugin, you MUST:
+1. Install the gorest-translatable plugin
+2. Register it in your application
+3. Enable it in your configuration (it must be loaded before the blog plugin)
+
+### Features
+
+- **Multi-Language Posts**: Store post titles and content in multiple languages
+- **JSON Storage**: Each locale stores title and content together in a single JSON record
+- **Database-Level Validation**: PostgreSQL (JSONB) and MySQL (JSON) provide native validation
+- **XSS Protection**: All content is automatically HTML-escaped (both title and content)
+- **Always Included**: Translations are automatically included in all GET /posts responses
+
+### Quick Start
+
+1. Enable the translatable plugin in your configuration (see [Configuration](#configuration-gorestyaml))
+2. Create a post with translations using the POST /posts endpoint (see [API Endpoints](#api-endpoints))
+3. Update a specific locale translation using the PUT /posts/:id endpoint
+4. Translations are automatically included in all GET responses
+
+**Response example:**
+
+```json
+{
+  "id": "post-uuid",
+  "slug": "my-post",
+  "status": "published",
+  "publishedAt": "2024-01-15T10:00:00Z",
+  "translations": {
+    "en": {
+      "title": "My Blog Post",
+      "content": "Original content..."
+    },
+    "fr": {
+      "title": "Mon Article",
+      "content": "Contenu en français..."
+    },
+    "es": {
+      "title": "Mi Artículo",
+      "content": "Contenido en español..."
+    }
+  }
+}
+```
+
+### Using TranslationService in Code
+
+```go
+import blog "github.com/nicolasbonnici/gorest-blog"
+
+// Create translation service
+service := blog.NewTranslationService(db)
+
+// Create multiple translations for a post
+translations := map[string]*blog.PostTranslationContent{
+    "en": {Title: "My Post", Content: "Content..."},
+    "fr": {Title: "Mon Article", Content: "Contenu..."},
+}
+err := service.CreateTranslations(ctx, postID, translations, &userID)
+
+// Update a specific locale
+err := service.UpdateTranslation(ctx, postID, "fr",
+    "Mon Article Mis à Jour",
+    "Nouveau contenu...",
+    &userID)
+
+// Get a translation
+translation, err := service.GetTranslation(ctx, postID, "fr")
+fmt.Printf("Title: %s\n", translation.Title)
+
+// List all translations for a post
+translations, err := service.ListTranslations(ctx, postID)
+for locale, trans := range translations {
+    fmt.Printf("[%s] %s\n", locale, trans.Title)
+}
+```
+
+For complete documentation on translations, see [TRANSLATIONS.md](TRANSLATIONS.md).
+
+## Migration Guide
+
+### Upgrading from v1.x to v2.0.0
+
+⚠️ **Breaking Change**: v2.0.0 removes the `title` and `content` columns from the `post` table and stores them in the `translatable` table instead.
+
+**Pre-Migration Checklist:**
+1. Backup your database
+2. Ensure translatable plugin is installed and configured
+3. Review that all posts have valid title/content
+
+**Migration Steps:**
+1. Stop your application
+2. Run the database migration (automatic with `migrations.auto_migrate: true`)
+3. Deploy the new code
+4. Start your application
+5. Verify all posts are accessible via API with translations
+
+**The migration will automatically:**
+- Migrate existing post title/content to the translatable table (default locale: 'en')
+- Drop the title and content columns from the post table
+- Preserve all existing data
+
+**Rollback:**
+If you need to rollback, run the down migration:
+```bash
+gorest migrate down
+```
+
+This will restore the title/content columns and copy data back from the translatable table (English locale only).
 
 ## Smart Features
 
@@ -257,12 +458,18 @@ The blog plugin declares a dependency on the auth plugin:
 func (p *BlogPlugin) MigrationDependencies() []string {
     return []string{"auth"}
 }
+
+func (p *BlogPlugin) Dependencies() []string {
+    return []string{"auth"}
+}
 ```
 
 This ensures:
 1. Auth plugin migrations run first
 2. Users table exists before creating posts
 3. Foreign key constraints work correctly
+
+**Optional**: If you want multi-language support, install and enable the `translatable` plugin. It must be loaded before the blog plugin in your configuration.
 
 ## Development
 
@@ -392,6 +599,41 @@ go test -tags=integration ./...
 **Problem**: `user_id does not exist`
 
 **Solution**: Create a user first via `/login` endpoint or insert directly into database.
+
+---
+
+## Git Hooks
+
+This directory contains git hooks for the GoREST Blog plugin to maintain code quality.
+
+### Available Hooks
+
+#### pre-commit
+
+Runs before each commit to ensure code quality:
+- **Linting**: Runs `make lint` to check code style and potential issues
+- **Tests**: Runs `make test` to verify all tests pass
+
+### Installation
+
+#### Automatic Installation
+
+Run the install script from the project root:
+
+```bash
+./.githooks/install.sh
+```
+
+#### Manual Installation
+
+Copy the hooks to your `.git/hooks` directory:
+
+```bash
+cp .githooks/pre-commit .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+```
+
+---
 
 ## License
 
