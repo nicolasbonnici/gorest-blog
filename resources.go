@@ -192,31 +192,58 @@ func (r *PostResource) Update(c *fiber.Ctx) error {
 
 	ctx := auth.Context(c)
 
-	// Fetch existing post to verify ownership
+	// Fetch existing post
 	existing, err := r.CRUD.GetByID(ctx, id)
 	if err != nil {
 		return c.Status(404).JSON(fiber.Map{"error": "Not found"})
 	}
 
-	// Update the translation for the specified locale
-	translationService := NewTranslationService(r.DB)
-	var userUUID *uuid.UUID
-	if existing.UserId != nil {
-		parsed, err := uuid.Parse(*existing.UserId)
-		if err == nil {
-			userUUID = &parsed
-		}
-	}
-	if err := translationService.UpdateTranslation(ctx, id, req.Locale, req.Title, req.Content, userUUID); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Failed to update translation: " + err.Error()})
+	// Update slug if provided
+	if req.Slug != "" {
+		existing.Slug = req.Slug
 	}
 
-	// Update post's updated_at timestamp
+	// Update status if provided
+	if req.Status != "" {
+		existing.Status = req.Status
+
+		// Update publishedAt based on status
+		if req.Status == types.PostStatusPublished && existing.PublishedAt == nil {
+			now := time.Now()
+			existing.PublishedAt = &now
+		}
+	}
+
+	// Update publishedAt if explicitly provided
+	if req.PublishedAt != nil {
+		existing.PublishedAt = req.PublishedAt
+	}
+
+	// Update post record
 	now := time.Now()
 	existing.UpdatedAt = &now
 
 	if err := r.CRUD.Update(ctx, id, *existing); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Update translations if provided
+	if len(req.Translations) > 0 {
+		translationService := NewTranslationService(r.DB)
+		var userUUID *uuid.UUID
+		if existing.UserId != nil {
+			parsed, err := uuid.Parse(*existing.UserId)
+			if err == nil {
+				userUUID = &parsed
+			}
+		}
+
+		// Update each translation
+		for locale, translation := range req.Translations {
+			if err := translationService.UpdateTranslation(ctx, id, locale, translation.Title, translation.Content, userUUID); err != nil {
+				return c.Status(500).JSON(fiber.Map{"error": "Failed to update translation for locale " + locale + ": " + err.Error()})
+			}
+		}
 	}
 
 	// Fetch post with all translations
@@ -225,6 +252,7 @@ func (r *PostResource) Update(c *fiber.Ctx) error {
 		updated = existing
 	}
 
+	translationService := NewTranslationService(r.DB)
 	translations, err := translationService.ListTranslations(ctx, id)
 	if err == nil && len(translations) > 0 {
 		updated.Translations = translations

@@ -2,7 +2,6 @@ package blog
 
 import (
 	"errors"
-	"html"
 	"strings"
 	"time"
 
@@ -31,9 +30,10 @@ type CreatePostRequest struct {
 }
 
 type UpdatePostRequest struct {
-	Locale  string `json:"locale" validate:"required"`
-	Title   string `json:"title" validate:"required"`
-	Content string `json:"content" validate:"required"`
+	Slug         string                                      `json:"slug"`
+	Status       types.PostStatus                            `json:"status"`
+	PublishedAt  *time.Time                                  `json:"publishedAt,omitempty"`
+	Translations map[string]*PostTranslationContent          `json:"translations"`
 }
 
 func (r *CreatePostRequest) Validate() error {
@@ -68,24 +68,37 @@ func (r *CreatePostRequest) Validate() error {
 }
 
 func (r *UpdatePostRequest) Validate() error {
-	r.Locale = strings.TrimSpace(r.Locale)
-	if r.Locale == "" {
-		return errors.New("locale cannot be empty")
+	// Slug is optional for updates, but if provided must not be empty
+	if r.Slug != "" {
+		r.Slug = strings.TrimSpace(r.Slug)
+		if r.Slug == "" {
+			return errors.New("slug cannot be empty")
+		}
 	}
 
-	r.Title = strings.TrimSpace(r.Title)
-	if r.Title == "" {
-		return errors.New("title cannot be empty")
+	// Status is optional for updates, but if provided must be valid
+	if r.Status != "" {
+		if !r.Status.IsValid() {
+			return errors.New("invalid status value")
+		}
 	}
 
-	r.Content = strings.TrimSpace(r.Content)
-	if r.Content == "" {
-		return errors.New("content cannot be empty")
-	}
+	// Translations are optional for updates, but if provided must be valid
+	if len(r.Translations) > 0 {
+		// Validate each translation
+		for locale, translation := range r.Translations {
+			if translation == nil {
+				return errors.New("translation for locale " + locale + " cannot be nil")
+			}
 
-	// Apply HTML escaping to both title and content
-	r.Title = html.EscapeString(r.Title)
-	r.Content = html.EscapeString(r.Content)
+			if err := translation.Validate(); err != nil {
+				return errors.New("validation failed for locale " + locale + ": " + err.Error())
+			}
+
+			// Apply HTML escaping to both title and content
+			translation.Sanitize()
+		}
+	}
 
 	return nil
 }
