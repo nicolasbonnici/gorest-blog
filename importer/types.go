@@ -9,13 +9,13 @@ import (
 type Post = engines.Post
 
 type ImportOptions struct {
-	Source         string
-	UserID         string
-	UpdateExisting bool
-	DryRun         bool
-	Username       string
-	ArticleURL     string
-	ArticleID      string
+	Source     string
+	UserID     string
+	DryRun     bool
+	Truncate   bool
+	Username   string
+	ArticleURL string
+	ArticleID  string
 }
 
 type ImportResult struct {

@@ -69,7 +69,7 @@ func Run(args []string) int {
 	articleURL := fs.String("url", "", "Specific article URL to import")
 	articleID := fs.String("id", "", "Specific article ID to import")
 	userID := fs.String("user-id", "", "User ID to assign imported posts to (required)")
-	update := fs.Bool("update", false, "Update existing posts with matching titles")
+	truncate := fs.Bool("truncate", false, "Delete all existing posts before importing")
 	dryRun := fs.Bool("dry-run", false, "Preview import without saving")
 	listEngines := fs.Bool("list-engines", false, "List available engines")
 
@@ -123,17 +123,19 @@ func Run(args []string) int {
 	service := importer.GetServiceFactory()(db, reporter)
 
 	opts := importer.ImportOptions{
-		Source:         *source,
-		UserID:         *userID,
-		Username:       *username,
-		ArticleURL:     *articleURL,
-		ArticleID:      *articleID,
-		UpdateExisting: *update,
-		DryRun:         *dryRun,
+		Source:     *source,
+		UserID:     *userID,
+		Username:   *username,
+		ArticleURL: *articleURL,
+		ArticleID:  *articleID,
+		Truncate:   *truncate,
+		DryRun:     *dryRun,
 	}
 
 	if *dryRun {
 		fmt.Println("Running in DRY-RUN mode - no changes will be saved")
+	} else if *truncate {
+		fmt.Println("WARNING: All existing posts will be deleted before importing")
 	}
 
 	result, err := service.Import(ctx, opts)
