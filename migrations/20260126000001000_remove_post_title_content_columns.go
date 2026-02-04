@@ -64,7 +64,7 @@ func removePostTitleContentColumnsUp(ctx context.Context, db database.Database) 
 	if hasColumns {
 		if err := migrations.SQL(ctx, db, migrations.DialectSQL{
 			Postgres: `
-				INSERT INTO translatable (id, user_id, translatable_id, translatable, locale, content, created_at)
+				INSERT INTO translations (id, user_id, translatable_id, translatable, locale, content, created_at)
 				SELECT
 					gen_random_uuid(),
 					user_id,
@@ -75,14 +75,14 @@ func removePostTitleContentColumnsUp(ctx context.Context, db database.Database) 
 					created_at
 				FROM post
 				WHERE NOT EXISTS (
-					SELECT 1 FROM translatable
+					SELECT 1 FROM translations
 					WHERE translatable_id = post.id
 					AND translatable = 'post'
 					AND locale = 'en'
 				)
 			`,
 			MySQL: `
-				INSERT INTO translatable (id, user_id, translatable_id, translatable, locale, content, created_at)
+				INSERT INTO translations (id, user_id, translatable_id, translatable, locale, content, created_at)
 				SELECT
 					UUID(),
 					user_id,
@@ -93,14 +93,14 @@ func removePostTitleContentColumnsUp(ctx context.Context, db database.Database) 
 					created_at
 				FROM post
 				WHERE NOT EXISTS (
-					SELECT 1 FROM translatable
+					SELECT 1 FROM translations
 					WHERE translatable_id = post.id
 					AND translatable = 'post'
 					AND locale = 'en'
 				)
 			`,
 			SQLite: `
-				INSERT INTO translatable (id, user_id, translatable_id, translatable, locale, content, created_at)
+				INSERT INTO translations (id, user_id, translatable_id, translatable, locale, content, created_at)
 				SELECT
 					lower(hex(randomblob(16))),
 					user_id,
@@ -111,7 +111,7 @@ func removePostTitleContentColumnsUp(ctx context.Context, db database.Database) 
 					created_at
 				FROM post
 				WHERE NOT EXISTS (
-					SELECT 1 FROM translatable
+					SELECT 1 FROM translations
 					WHERE translatable_id = post.id
 					AND translatable = 'post'
 					AND locale = 'en'
@@ -126,7 +126,7 @@ func removePostTitleContentColumnsUp(ctx context.Context, db database.Database) 
 	// Note: SQLite table recreation is handled separately below
 	if err := migrations.SQL(ctx, db, migrations.DialectSQL{
 		Postgres: `ALTER TABLE post DROP COLUMN IF EXISTS title, DROP COLUMN IF EXISTS content`,
-		MySQL:    `
+		MySQL: `
 			ALTER TABLE post
 			DROP COLUMN IF EXISTS title,
 			DROP COLUMN IF EXISTS content
@@ -226,7 +226,7 @@ func removePostTitleContentColumnsDown(ctx context.Context, db database.Database
 			SET
 				title = (
 					SELECT content::jsonb->>'title'
-					FROM translatable
+					FROM translations
 					WHERE translatable_id = post.id
 					AND translatable = 'post'
 					AND locale = 'en'
@@ -234,7 +234,7 @@ func removePostTitleContentColumnsDown(ctx context.Context, db database.Database
 				),
 				content = (
 					SELECT content::jsonb->>'content'
-					FROM translatable
+					FROM translations
 					WHERE translatable_id = post.id
 					AND translatable = 'post'
 					AND locale = 'en'
@@ -243,7 +243,7 @@ func removePostTitleContentColumnsDown(ctx context.Context, db database.Database
 		`,
 		MySQL: `
 			UPDATE post p
-			LEFT JOIN translatable t ON t.translatable_id = p.id
+			LEFT JOIN translations t ON t.translatable_id = p.id
 				AND t.translatable = 'post'
 				AND t.locale = 'en'
 			SET
@@ -255,7 +255,7 @@ func removePostTitleContentColumnsDown(ctx context.Context, db database.Database
 			SET
 				title = (
 					SELECT json_extract(content, '$.title')
-					FROM translatable
+					FROM translations
 					WHERE translatable_id = post.id
 					AND translatable = 'post'
 					AND locale = 'en'
@@ -263,7 +263,7 @@ func removePostTitleContentColumnsDown(ctx context.Context, db database.Database
 				),
 				content = (
 					SELECT json_extract(content, '$.content')
-					FROM translatable
+					FROM translations
 					WHERE translatable_id = post.id
 					AND translatable = 'post'
 					AND locale = 'en'

@@ -5,7 +5,7 @@ go 1.25.1
 require (
 	github.com/gofiber/fiber/v2 v2.52.11
 	github.com/google/uuid v1.6.0
-	github.com/nicolasbonnici/gorest v0.4.8
+	github.com/nicolasbonnici/gorest v0.4.9
 	github.com/nicolasbonnici/gorest-auth v0.1.6
 	github.com/schollz/progressbar/v3 v3.19.0
 )
@@ -13,8 +13,8 @@ require (
 require (
 	github.com/andybalholm/brotli v1.2.0 // indirect
 	github.com/clipperhouse/stringish v0.1.1 // indirect
-	github.com/clipperhouse/uax29/v2 v2.4.0 // indirect
-	github.com/gabriel-vasile/mimetype v1.4.12 // indirect
+	github.com/clipperhouse/uax29/v2 v2.5.0 // indirect
+	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.30.1 // indirect
@@ -38,6 +38,9 @@ require (
 	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/term v0.39.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
+	modernc.org/libc v1.67.7 // indirect
 )
+
+replace github.com/nicolasbonnici/gorest => ../../gorest
 
 replace github.com/nicolasbonnici/gorest-translatable => ../gorest-translatable

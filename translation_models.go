@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// PostTranslationContent represents the JSON structure stored in translatable.content
+// PostTranslationContent represents the JSON structure stored in translations.content
 // This structure contains both title and content fields for a post translation
 type PostTranslationContent struct {
 	Title   string `json:"title"`

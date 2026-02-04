@@ -62,7 +62,7 @@ func (s *TranslationService) CreateTranslations(ctx context.Context, postID stri
 		now := time.Now()
 
 		sql, args, err := s.qb.
-			Insert("translatable").
+			Insert("translations").
 			Columns("id", "user_id", "translatable_id", "translatable", "locale", "content", "created_at").
 			Values(translationID, userID, postUUID, TranslatableTypePost, locale, jsonContent, now).
 			Build()
@@ -114,7 +114,7 @@ func (s *TranslationService) CreateTranslation(ctx context.Context, postID, loca
 	now := time.Now()
 
 	sql, args, err := s.qb.
-		Insert("translatable").
+		Insert("translations").
 		Columns("id", "user_id", "translatable_id", "translatable", "locale", "content", "created_at").
 		Values(translationID, userID, postUUID, TranslatableTypePost, locale, jsonContent, now).
 		Build()
@@ -139,7 +139,7 @@ func (s *TranslationService) GetTranslation(ctx context.Context, postID, locale 
 
 	sql, args, err := s.qb.
 		Select("content").
-		From("translatable").
+		From("translations").
 		Where(
 			query.And(
 				query.Eq("translatable_id", postUUID),
@@ -180,7 +180,7 @@ func (s *TranslationService) ListTranslations(ctx context.Context, postID string
 
 	sql, args, err := s.qb.
 		Select("locale", "content").
-		From("translatable").
+		From("translations").
 		Where(
 			query.And(
 				query.Eq("translatable_id", postUUID),
@@ -251,7 +251,7 @@ func (s *TranslationService) UpdateTranslation(ctx context.Context, postID, loca
 	now := time.Now()
 
 	sql, args, err := s.qb.
-		Update("translatable").
+		Update("translations").
 		Set("content", jsonContent).
 		Set("updated_at", now).
 		Where(
@@ -282,7 +282,7 @@ func (s *TranslationService) DeleteAllTranslations(ctx context.Context, postID s
 	}
 
 	sql, args, err := s.qb.
-		Delete("translatable").
+		Delete("translations").
 		Where(
 			query.And(
 				query.Eq("translatable_id", postUUID),
@@ -318,7 +318,7 @@ func (s *TranslationService) DeleteTranslation(ctx context.Context, postID, loca
 	}
 
 	sql, args, err := s.qb.
-		Delete("translatable").
+		Delete("translations").
 		Where(
 			query.And(
 				query.Eq("translatable_id", postUUID),
@@ -374,7 +374,7 @@ func (s *TranslationService) translationExists(ctx context.Context, postID uuid.
 
 	sql, args, err := s.qb.
 		Select("id").
-		From("translatable").
+		From("translations").
 		Where(query.And(conditions...)).
 		Limit(1).
 		Build()

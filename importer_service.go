@@ -256,9 +256,9 @@ func (s *ImporterService) userExists(ctx context.Context, userID string) (bool, 
 }
 
 func (s *ImporterService) truncatePosts(ctx context.Context) error {
-	// Delete related data first (translatable table uses polymorphic relationship)
+	// Delete related data first (translations table uses polymorphic relationship)
 	// Delete translations for posts
-	deleteTranslations := "DELETE FROM translatable WHERE translatable = 'post'"
+	deleteTranslations := "DELETE FROM translations WHERE translatable = 'post'"
 	if _, err := s.db.Exec(ctx, deleteTranslations); err != nil {
 		return fmt.Errorf("failed to delete post translations: %w", err)
 	}
