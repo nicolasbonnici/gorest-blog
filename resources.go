@@ -76,27 +76,18 @@ func (r *PostResource) List(c *fiber.Ctx) error {
 
 	ctx := auth.Context(c)
 
-	result, err := r.CRUD.GetAllPaginated(ctx, crud.PaginationOptions{
-		Limit:        limit,
-		Offset:       offset,
-		IncludeCount: includeCount,
-		Conditions:   filters.Conditions(),
-		OrderBy:      orderByClauses,
-	})
+	translationService := NewTranslationService(r.DB)
+	result, err := translationService.LoadPostsWithTranslations(ctx, limit, offset, includeCount, filters.Conditions(), orderByClauses)
 	if err != nil {
 		return pagination.SendPaginatedError(c, 500, err.Error())
 	}
 
-	// Always fetch translations for all posts
-	translationService := NewTranslationService(r.DB)
-	for i := range result.Items {
-		translations, err := translationService.ListTranslations(ctx, result.Items[i].Id)
-		if err == nil && len(translations) > 0 {
-			result.Items[i].Translations = translations
-		}
+	items := make([]Post, len(result.Posts))
+	for i, post := range result.Posts {
+		items[i] = *post
 	}
 
-	return pagination.SendHydraCollection(c, result.Items, result.Total, limit, page, r.PaginationLimit)
+	return pagination.SendHydraCollection(c, items, result.Total, limit, page, r.PaginationLimit)
 }
 
 func (r *PostResource) Get(c *fiber.Ctx) error {

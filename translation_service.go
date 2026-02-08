@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/nicolasbonnici/gorest-blog/types"
+	"github.com/nicolasbonnici/gorest/crud"
 	"github.com/nicolasbonnici/gorest/database"
 	"github.com/nicolasbonnici/gorest/query"
 )
@@ -389,4 +391,226 @@ func (s *TranslationService) translationExists(ctx context.Context, postID uuid.
 	defer func() { _ = rows.Close() }()
 
 	return rows.Next(), nil
+}
+
+// PostWithTranslationsResult represents the result of a paginated posts query with translations
+type PostWithTranslationsResult struct {
+	Posts []*Post
+	Total *int
+}
+
+// LoadPostsWithTranslations retrieves posts with their translations in a single query using JOIN
+// This eliminates the N+1 query problem by fetching all data at once
+func (s *TranslationService) LoadPostsWithTranslations(ctx context.Context, limit, offset int, includeCount bool, conditions []query.Condition, orderBy []crud.OrderByClause) (*PostWithTranslationsResult, error) {
+	sql, args, err := s.buildJoinQuery(limit, offset, conditions, orderBy)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build query: %w", err)
+	}
+
+	rows, err := s.db.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	postsMap := make(map[string]*Post)
+	var postOrder []string
+
+	for rows.Next() {
+		var (
+			id          string
+			userID      *string
+			slug        string
+			status      string
+			publishedAt interface{}
+			updatedAt   interface{}
+			createdAt   interface{}
+			locale      *string
+			content     *string
+		)
+
+		if err := rows.Scan(&id, &userID, &slug, &status, &publishedAt, &updatedAt, &createdAt, &locale, &content); err != nil {
+			return nil, fmt.Errorf("scan failed: %w", err)
+		}
+
+		var publishedAtTime, updatedAtTime, createdAtTime *time.Time
+
+		if publishedAt != nil {
+			if t, err := parseTimeValue(publishedAt); err == nil {
+				publishedAtTime = t
+			}
+		}
+
+		if updatedAt != nil {
+			if t, err := parseTimeValue(updatedAt); err == nil {
+				updatedAtTime = t
+			}
+		}
+
+		if createdAt != nil {
+			if t, err := parseTimeValue(createdAt); err == nil {
+				createdAtTime = t
+			}
+		}
+
+		post, exists := postsMap[id]
+		if !exists {
+			post = &Post{
+				Id:           id,
+				UserId:       userID,
+				Slug:         slug,
+				Status:       types.PostStatus(status),
+				PublishedAt:  publishedAtTime,
+				UpdatedAt:    updatedAtTime,
+				CreatedAt:    createdAtTime,
+				Translations: make(map[string]*PostTranslationContent),
+			}
+			postsMap[id] = post
+			postOrder = append(postOrder, id)
+		}
+
+		if locale != nil && content != nil {
+			translationContent, err := ParsePostTranslationContent(*content)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse translation for post %s, locale %s: %w", id, *locale, err)
+			}
+			post.Translations[*locale] = translationContent
+		}
+	}
+
+	posts := make([]*Post, 0, len(postOrder))
+	for _, id := range postOrder {
+		posts = append(posts, postsMap[id])
+	}
+
+	result := &PostWithTranslationsResult{
+		Posts: posts,
+		Total: nil,
+	}
+
+	if includeCount {
+		countSQL, countArgs, err := s.buildCountQuery(conditions)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build count query: %w", err)
+		}
+
+		var total int
+		if err := s.db.QueryRow(ctx, countSQL, countArgs...).Scan(&total); err != nil {
+			return nil, fmt.Errorf("failed to get total count: %w", err)
+		}
+		result.Total = &total
+	}
+
+	return result, nil
+}
+
+// buildJoinQuery constructs a SQL query with JOIN to fetch posts and translations
+func (s *TranslationService) buildJoinQuery(limit, offset int, conditions []query.Condition, orderBy []crud.OrderByClause) (string, []interface{}, error) {
+	dialect := s.db.Dialect()
+	args := []interface{}{}
+	argPos := 1
+
+	baseSQL := `SELECT
+		p.id, p.user_id, p.slug, p.status, p.published_at, p.updated_at, p.created_at,
+		t.locale, t.content
+	FROM post p
+	LEFT JOIN translations t ON t.translatable_id = p.id AND t.translatable = ` + dialect.Placeholder(argPos)
+
+	args = append(args, TranslatableTypePost)
+	argPos++
+
+	whereClauses := []string{}
+	for _, condition := range conditions {
+		condSQL, condArgs, nextParam := condition.ToSQL(dialect, argPos)
+		whereClauses = append(whereClauses, condSQL)
+		args = append(args, condArgs...)
+		argPos = nextParam
+	}
+
+	if len(whereClauses) > 0 {
+		baseSQL += " WHERE "
+		for i, clause := range whereClauses {
+			if i > 0 {
+				baseSQL += " AND "
+			}
+			baseSQL += clause
+		}
+	}
+
+	if len(orderBy) > 0 {
+		baseSQL += " ORDER BY "
+		for i, order := range orderBy {
+			if i > 0 {
+				baseSQL += ", "
+			}
+			baseSQL += order.Column + " " + order.Direction.String()
+		}
+	} else {
+		baseSQL += " ORDER BY p.created_at DESC"
+	}
+
+	baseSQL += " " + dialect.LimitOffset(limit, offset)
+
+	return baseSQL, args, nil
+}
+
+// buildCountQuery constructs a SQL query to count distinct posts
+func (s *TranslationService) buildCountQuery(conditions []query.Condition) (string, []interface{}, error) {
+	dialect := s.db.Dialect()
+	args := []interface{}{}
+	argPos := 1
+
+	baseSQL := "SELECT COUNT(DISTINCT p.id) FROM post p"
+
+	whereClauses := []string{}
+	for _, condition := range conditions {
+		condSQL, condArgs, nextParam := condition.ToSQL(dialect, argPos)
+		whereClauses = append(whereClauses, condSQL)
+		args = append(args, condArgs...)
+		argPos = nextParam
+	}
+
+	if len(whereClauses) > 0 {
+		baseSQL += " WHERE "
+		for i, clause := range whereClauses {
+			if i > 0 {
+				baseSQL += " AND "
+			}
+			baseSQL += clause
+		}
+	}
+
+	return baseSQL, args, nil
+}
+
+// parseTimeValue parses a time value from different database types
+func parseTimeValue(val interface{}) (*time.Time, error) {
+	if val == nil {
+		return nil, nil
+	}
+
+	switch v := val.(type) {
+	case time.Time:
+		return &v, nil
+	case *time.Time:
+		return v, nil
+	case string:
+		formats := []string{
+			time.RFC3339,
+			time.RFC3339Nano,
+			"2006-01-02 15:04:05",
+			"2006-01-02T15:04:05",
+			"2006-01-02 15:04:05.999999999",
+		}
+		for _, format := range formats {
+			if t, err := time.Parse(format, v); err == nil {
+				return &t, nil
+			}
+		}
+		return nil, fmt.Errorf("unable to parse time string: %s", v)
+	case []byte:
+		return parseTimeValue(string(v))
+	default:
+		return nil, fmt.Errorf("unsupported time type: %T", val)
+	}
 }
