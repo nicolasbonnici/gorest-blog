@@ -16,13 +16,11 @@ const (
 	MetricNameComments = "comments"
 )
 
-// MetricsService provides methods to manage post metrics
 type MetricsService struct {
 	db database.Database
 	qb *query.Builder
 }
 
-// NewMetricsService creates a new MetricsService instance
 func NewMetricsService(db database.Database) *MetricsService {
 	return &MetricsService{
 		db: db,
@@ -30,32 +28,26 @@ func NewMetricsService(db database.Database) *MetricsService {
 	}
 }
 
-// IncrementViews increments the view count for a post
 func (s *MetricsService) IncrementViews(ctx context.Context, postID string) error {
 	return s.incrementMetric(ctx, postID, MetricNameViews)
 }
 
-// IncrementLikes increments the like count for a post
 func (s *MetricsService) IncrementLikes(ctx context.Context, postID string) error {
 	return s.incrementMetric(ctx, postID, MetricNameLikes)
 }
 
-// IncrementComments increments the comment count for a post
 func (s *MetricsService) IncrementComments(ctx context.Context, postID string) error {
 	return s.incrementMetric(ctx, postID, MetricNameComments)
 }
 
-// DecrementLikes decrements the like count for a post
 func (s *MetricsService) DecrementLikes(ctx context.Context, postID string) error {
 	return s.decrementMetric(ctx, postID, MetricNameLikes)
 }
 
-// DecrementComments decrements the comment count for a post
 func (s *MetricsService) DecrementComments(ctx context.Context, postID string) error {
 	return s.decrementMetric(ctx, postID, MetricNameComments)
 }
 
-// GetMetrics retrieves metrics for a single post
 func (s *MetricsService) GetMetrics(ctx context.Context, postID string) (*PostMetrics, error) {
 	postUUID, err := uuid.Parse(postID)
 	if err != nil {
@@ -109,7 +101,6 @@ func (s *MetricsService) GetMetrics(ctx context.Context, postID string) (*PostMe
 	return metrics, nil
 }
 
-// InitializeMetrics creates initial metrics records for a post
 func (s *MetricsService) InitializeMetrics(ctx context.Context, postID string) error {
 	postUUID, err := uuid.Parse(postID)
 	if err != nil {
@@ -127,7 +118,6 @@ func (s *MetricsService) InitializeMetrics(ctx context.Context, postID string) e
 	return nil
 }
 
-// incrementMetric increments a specific metric for a post
 func (s *MetricsService) incrementMetric(ctx context.Context, postID, metricName string) error {
 	postUUID, err := uuid.Parse(postID)
 	if err != nil {
@@ -173,7 +163,6 @@ func (s *MetricsService) incrementMetric(ctx context.Context, postID, metricName
 	return nil
 }
 
-// decrementMetric decrements a specific metric for a post
 func (s *MetricsService) decrementMetric(ctx context.Context, postID, metricName string) error {
 	postUUID, err := uuid.Parse(postID)
 	if err != nil {
@@ -219,7 +208,6 @@ func (s *MetricsService) decrementMetric(ctx context.Context, postID, metricName
 	return nil
 }
 
-// initializeMetric creates an initial metric record for a post
 func (s *MetricsService) initializeMetric(ctx context.Context, postUUID uuid.UUID, metricName string) error {
 	var sql string
 	var args []interface{}
