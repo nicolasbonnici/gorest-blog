@@ -63,11 +63,11 @@ func (p *BlogPlugin) MigrationSource() interface{} {
 }
 
 func (p *BlogPlugin) MigrationDependencies() []string {
-	return []string{"auth", "translatable", "metrics"}
+	return []string{"auth", "translatable", "metrics", "rbac"}
 }
 
 func (p *BlogPlugin) Dependencies() []string {
-	return []string{"auth", "translatable", "metrics"}
+	return []string{"auth", "translatable", "metrics", "rbac"}
 }
 
 func (p *BlogPlugin) GetOpenAPIResources() []plugin.OpenAPIResource {

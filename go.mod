@@ -7,6 +7,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/nicolasbonnici/gorest v0.4.9
 	github.com/nicolasbonnici/gorest-auth v0.1.6
+	github.com/nicolasbonnici/gorest-rbac v0.1.0
 	github.com/schollz/progressbar/v3 v3.19.0
 )
 
@@ -46,3 +47,5 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 	modernc.org/sqlite v1.44.3 // indirect
 )
+
+replace github.com/nicolasbonnici/gorest-rbac => ../gorest-rbac

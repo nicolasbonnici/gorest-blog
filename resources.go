@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	auth "github.com/nicolasbonnici/gorest-auth"
 	"github.com/nicolasbonnici/gorest-blog/types"
+	"github.com/nicolasbonnici/gorest-rbac"
 	"github.com/nicolasbonnici/gorest/crud"
 	"github.com/nicolasbonnici/gorest/database"
 	"github.com/nicolasbonnici/gorest/filter"
@@ -22,22 +23,42 @@ type PostResource struct {
 	Config             *Config
 	PaginationLimit    int
 	PaginationMaxLimit int
+	Voter              rbac.Voter
 }
 
 func RegisterPostRoutes(app *fiber.App, db database.Database, config *Config) {
+	rbacConfig := rbac.Config{
+		DefaultPolicy: rbac.DenyAll,
+		SuperuserRole: "admin",
+		RoleHierarchy: map[string][]string{
+			"writer":    {"moderator"},
+			"moderator": {"reader"},
+		},
+		CacheEnabled: true,
+		StrictMode:   false,
+	}
+
+	voter, err := rbac.NewVoter(rbacConfig)
+	if err != nil {
+		panic("failed to create RBAC voter: " + err.Error())
+	}
+
+	roleProvider := rbac.NewFiberRoleProvider("user_roles", "user_id")
+
 	res := &PostResource{
 		DB:                 db,
 		CRUD:               crud.New[Post](db),
 		Config:             config,
 		PaginationLimit:    config.PaginationLimit,
 		PaginationMaxLimit: config.MaxPaginationLimit,
+		Voter:              voter,
 	}
 
 	app.Get("/posts", res.List)
 	app.Get("/posts/:id", res.Get)
-	app.Post("/posts", res.Create)
-	app.Put("/posts/:id", res.Update)
-	app.Delete("/posts/:id", res.Delete)
+	app.Post("/posts", rbac.RequireRole(voter, roleProvider, "writer"), res.Create)
+	app.Put("/posts/:id", rbac.RequireRole(voter, roleProvider, "writer", "moderator"), res.Update)
+	app.Delete("/posts/:id", rbac.RequireRole(voter, roleProvider, "writer"), res.Delete)
 }
 
 func (r *PostResource) List(c *fiber.Ctx) error {
@@ -83,9 +104,14 @@ func (r *PostResource) List(c *fiber.Ctx) error {
 		return pagination.SendPaginatedError(c, 500, err.Error())
 	}
 
-	items := make([]Post, len(result.Posts))
+	items := make([]interface{}, len(result.Posts))
 	for i, post := range result.Posts {
-		items[i] = *post
+		filtered, err := r.Voter.FilterRead(ctx, post)
+		if err != nil {
+			items[i] = *post
+		} else {
+			items[i] = filtered
+		}
 	}
 
 	return pagination.SendHydraCollection(c, items, result.Total, limit, page, r.PaginationLimit)
@@ -118,7 +144,13 @@ func (r *PostResource) Get(c *fiber.Ctx) error {
 		_ = metricsService.IncrementViews(bgCtx, id)
 	}()
 
-	return response.SendFormatted(c, 200, item)
+	// Apply RBAC filtering
+	filtered, err := r.Voter.FilterRead(ctx, item)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to filter response"})
+	}
+
+	return response.SendFormatted(c, 200, filtered)
 }
 
 func (r *PostResource) Create(c *fiber.Ctx) error {
@@ -131,8 +163,10 @@ func (r *PostResource) Create(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
 
+	ctx := auth.Context(c)
+
 	var item Post
-	item.Id = uuid.New().String() // Generate UUID before insert
+	item.Id = uuid.New().String()
 	item.Slug = req.Slug
 	item.Status = req.Status
 
@@ -145,7 +179,9 @@ func (r *PostResource) Create(c *fiber.Ctx) error {
 		item.PublishedAt = &now
 	}
 
-	ctx := auth.Context(c)
+	if err := r.Voter.ValidateWrite(ctx, &item); err != nil {
+		return c.Status(403).JSON(fiber.Map{"error": err.Error()})
+	}
 
 	// Create post record without title/content
 	if err := r.CRUD.Create(ctx, item); err != nil {
@@ -175,7 +211,11 @@ func (r *PostResource) Create(c *fiber.Ctx) error {
 
 	created, err := r.CRUD.GetByID(ctx, item.Id)
 	if err != nil {
-		return response.SendFormatted(c, 201, item)
+		filtered, filterErr := r.Voter.FilterRead(ctx, &item)
+		if filterErr != nil {
+			return response.SendFormatted(c, 201, item)
+		}
+		return response.SendFormatted(c, 201, filtered)
 	}
 
 	translations, err := translationService.ListTranslations(ctx, item.Id)
@@ -188,7 +228,12 @@ func (r *PostResource) Create(c *fiber.Ctx) error {
 		created.Metrics = metrics
 	}
 
-	return response.SendFormatted(c, 201, created)
+	filtered, err := r.Voter.FilterRead(ctx, created)
+	if err != nil {
+		return response.SendFormatted(c, 201, created)
+	}
+
+	return response.SendFormatted(c, 201, filtered)
 }
 
 func (r *PostResource) Update(c *fiber.Ctx) error {
@@ -211,28 +256,30 @@ func (r *PostResource) Update(c *fiber.Ctx) error {
 		return c.Status(404).JSON(fiber.Map{"error": "Not found"})
 	}
 
-	// Update slug if provided
+	// Create update object for validation
+	updateItem := *existing
 	if req.Slug != "" {
-		existing.Slug = req.Slug
+		updateItem.Slug = req.Slug
 	}
-
-	// Update status if provided
 	if req.Status != "" {
-		existing.Status = req.Status
-
-		// Update publishedAt based on status
-		if req.Status == types.PostStatusPublished && existing.PublishedAt == nil {
+		updateItem.Status = req.Status
+		if req.Status == types.PostStatusPublished && updateItem.PublishedAt == nil {
 			now := time.Now()
-			existing.PublishedAt = &now
+			updateItem.PublishedAt = &now
 		}
 	}
-
-	// Update publishedAt if explicitly provided
 	if req.PublishedAt != nil {
-		existing.PublishedAt = req.PublishedAt
+		updateItem.PublishedAt = req.PublishedAt
 	}
 
-	// Update post record
+	if err := r.Voter.ValidateWrite(ctx, &updateItem); err != nil {
+		return c.Status(403).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Apply validated changes
+	existing.Slug = updateItem.Slug
+	existing.Status = updateItem.Status
+	existing.PublishedAt = updateItem.PublishedAt
 	now := time.Now()
 	existing.UpdatedAt = &now
 
@@ -277,7 +324,12 @@ func (r *PostResource) Update(c *fiber.Ctx) error {
 		updated.Metrics = metrics
 	}
 
-	return response.SendFormatted(c, 200, updated)
+	filtered, err := r.Voter.FilterRead(ctx, updated)
+	if err != nil {
+		return response.SendFormatted(c, 200, updated)
+	}
+
+	return response.SendFormatted(c, 200, filtered)
 }
 
 func (r *PostResource) Delete(c *fiber.Ctx) error {
