@@ -7,13 +7,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nicolasbonnici/gorest-blog/types"
-	"github.com/nicolasbonnici/gorest/crud"
 	"github.com/nicolasbonnici/gorest/database"
 	_ "github.com/nicolasbonnici/gorest/database/sqlite"
-	"github.com/nicolasbonnici/gorest/query"
 )
 
-func TestLoadPostsWithTranslations_Integration(t *testing.T) {
+func TestLoadPostsWithTranslationsAndMetrics_Integration(t *testing.T) {
 	ctx := context.Background()
 
 	db, err := database.Open("sqlite", ":memory:")
@@ -22,11 +20,12 @@ func TestLoadPostsWithTranslations_Integration(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	if err := createTestSchema(ctx, db); err != nil {
+	if err := createTestSchemaWithMetrics(ctx, db); err != nil {
 		t.Fatalf("Failed to create test schema: %v", err)
 	}
 
-	service := NewTranslationService(db)
+	translationService := NewTranslationService(db)
+	metricsService := NewMetricsService(db)
 
 	postID1 := uuid.New().String()
 	postID2 := uuid.New().String()
@@ -52,8 +51,44 @@ func TestLoadPostsWithTranslations_Integration(t *testing.T) {
 		t.Fatalf("Failed to insert en translation for post 2: %v", err)
 	}
 
-	t.Run("Load all posts with translations", func(t *testing.T) {
-		result, err := service.LoadPostsWithTranslations(ctx, 10, 0, true, nil, nil)
+	if err := metricsService.InitializeMetrics(ctx, postID1); err != nil {
+		t.Fatalf("Failed to initialize metrics for post 1: %v", err)
+	}
+
+	if err := metricsService.InitializeMetrics(ctx, postID2); err != nil {
+		t.Fatalf("Failed to initialize metrics for post 2: %v", err)
+	}
+
+	if err := metricsService.IncrementViews(ctx, postID1); err != nil {
+		t.Fatalf("Failed to increment views for post 1: %v", err)
+	}
+
+	if err := metricsService.IncrementViews(ctx, postID1); err != nil {
+		t.Fatalf("Failed to increment views for post 1 again: %v", err)
+	}
+
+	if err := metricsService.IncrementLikes(ctx, postID1); err != nil {
+		t.Fatalf("Failed to increment likes for post 1: %v", err)
+	}
+
+	if err := metricsService.IncrementComments(ctx, postID1); err != nil {
+		t.Fatalf("Failed to increment comments for post 1: %v", err)
+	}
+
+	if err := metricsService.IncrementComments(ctx, postID1); err != nil {
+		t.Fatalf("Failed to increment comments for post 1 again: %v", err)
+	}
+
+	if err := metricsService.IncrementComments(ctx, postID1); err != nil {
+		t.Fatalf("Failed to increment comments for post 1 third time: %v", err)
+	}
+
+	if err := metricsService.IncrementViews(ctx, postID2); err != nil {
+		t.Fatalf("Failed to increment views for post 2: %v", err)
+	}
+
+	t.Run("Load posts with translations and metrics in single query", func(t *testing.T) {
+		result, err := translationService.LoadPostsWithTranslations(ctx, 10, 0, true, nil, nil)
 		if err != nil {
 			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
 		}
@@ -92,6 +127,20 @@ func TestLoadPostsWithTranslations_Integration(t *testing.T) {
 						t.Errorf("Expected 'French Title 1', got %s", trans.Title)
 					}
 				}
+
+				if post.Metrics == nil {
+					t.Error("Expected metrics for post 1, got nil")
+				} else {
+					if post.Metrics.Views != 2 {
+						t.Errorf("Expected 2 views for post 1, got %d", post.Metrics.Views)
+					}
+					if post.Metrics.Likes != 1 {
+						t.Errorf("Expected 1 like for post 1, got %d", post.Metrics.Likes)
+					}
+					if post.Metrics.Comments != 3 {
+						t.Errorf("Expected 3 comments for post 1, got %d", post.Metrics.Comments)
+					}
+				}
 			}
 
 			if post.Id == postID2 {
@@ -99,57 +148,25 @@ func TestLoadPostsWithTranslations_Integration(t *testing.T) {
 					t.Errorf("Expected 1 translation for post 2, got %d", len(post.Translations))
 				}
 
-				if trans, ok := post.Translations["en"]; !ok {
-					t.Error("Expected 'en' translation for post 2")
+				if post.Metrics == nil {
+					t.Error("Expected metrics for post 2, got nil")
 				} else {
-					if trans.Title != "English Title 2" {
-						t.Errorf("Expected 'English Title 2', got %s", trans.Title)
+					if post.Metrics.Views != 1 {
+						t.Errorf("Expected 1 view for post 2, got %d", post.Metrics.Views)
+					}
+					if post.Metrics.Likes != 0 {
+						t.Errorf("Expected 0 likes for post 2, got %d", post.Metrics.Likes)
+					}
+					if post.Metrics.Comments != 0 {
+						t.Errorf("Expected 0 comments for post 2, got %d", post.Metrics.Comments)
 					}
 				}
 			}
 		}
 	})
 
-	t.Run("Load posts with pagination", func(t *testing.T) {
-		result, err := service.LoadPostsWithTranslations(ctx, 1, 0, true, nil, nil)
-		if err != nil {
-			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
-		}
-
-		if len(result.Posts) != 1 {
-			t.Errorf("Expected 1 post with limit, got %d", len(result.Posts))
-		}
-
-		if result.Total == nil || *result.Total != 2 {
-			t.Errorf("Expected total count 2 regardless of limit, got %v", result.Total)
-		}
-	})
-
-	t.Run("Load posts with filters", func(t *testing.T) {
-		conditions := []query.Condition{
-			query.Eq("p.status", string(types.PostStatusPublished)),
-		}
-
-		result, err := service.LoadPostsWithTranslations(ctx, 10, 0, true, conditions, nil)
-		if err != nil {
-			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
-		}
-
-		if len(result.Posts) != 1 {
-			t.Errorf("Expected 1 published post, got %d", len(result.Posts))
-		}
-
-		if result.Posts[0].Status != types.PostStatusPublished {
-			t.Errorf("Expected published status, got %s", result.Posts[0].Status)
-		}
-	})
-
-	t.Run("Load posts with ordering", func(t *testing.T) {
-		orderBy := []crud.OrderByClause{
-			{Column: "p.slug", Direction: query.ASC},
-		}
-
-		result, err := service.LoadPostsWithTranslations(ctx, 10, 0, false, nil, orderBy)
+	t.Run("Verify no N+1 queries - single query loads all data", func(t *testing.T) {
+		result, err := translationService.LoadPostsWithTranslations(ctx, 10, 0, false, nil, nil)
 		if err != nil {
 			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
 		}
@@ -158,30 +175,21 @@ func TestLoadPostsWithTranslations_Integration(t *testing.T) {
 			t.Errorf("Expected 2 posts, got %d", len(result.Posts))
 		}
 
-		if result.Posts[0].Slug != "test-post-1" {
-			t.Errorf("Expected first post slug 'test-post-1', got %s", result.Posts[0].Slug)
-		}
+		for _, post := range result.Posts {
+			if post.Metrics == nil {
+				t.Errorf("Post %s has nil metrics - metrics not loaded in JOIN query", post.Id)
+			}
 
-		if result.Posts[1].Slug != "test-post-2" {
-			t.Errorf("Expected second post slug 'test-post-2', got %s", result.Posts[1].Slug)
-		}
-	})
-
-	t.Run("Load posts without count", func(t *testing.T) {
-		result, err := service.LoadPostsWithTranslations(ctx, 10, 0, false, nil, nil)
-		if err != nil {
-			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
-		}
-
-		if result.Total != nil {
-			t.Errorf("Expected nil total when includeCount is false, got %v", result.Total)
+			if len(post.Translations) == 0 {
+				t.Errorf("Post %s has no translations - translations not loaded in JOIN query", post.Id)
+			}
 		}
 	})
 }
 
-func createTestSchema(ctx context.Context, db database.Database) error {
+func createTestSchemaWithMetrics(ctx context.Context, db database.Database) error {
 	_, err := db.Exec(ctx, `
-		CREATE TABLE post (
+		CREATE TABLE IF NOT EXISTS post (
 			id TEXT PRIMARY KEY,
 			user_id TEXT,
 			slug TEXT NOT NULL,
@@ -196,7 +204,7 @@ func createTestSchema(ctx context.Context, db database.Database) error {
 	}
 
 	_, err = db.Exec(ctx, `
-		CREATE TABLE translations (
+		CREATE TABLE IF NOT EXISTS translations (
 			id TEXT PRIMARY KEY,
 			user_id TEXT,
 			translatable_id TEXT NOT NULL,
@@ -220,37 +228,5 @@ func createTestSchema(ctx context.Context, db database.Database) error {
 			PRIMARY KEY (resource, resource_id, name)
 		)
 	`)
-	return err
-}
-
-func insertTestPost(ctx context.Context, db database.Database, id, slug string, status types.PostStatus, publishedAt *time.Time) error {
-	var pubAt interface{}
-	if publishedAt != nil {
-		pubAt = publishedAt.Format(time.RFC3339)
-	}
-
-	_, err := db.Exec(ctx, `
-		INSERT INTO post (id, slug, status, published_at, created_at)
-		VALUES (?, ?, ?, ?, ?)
-	`, id, slug, string(status), pubAt, time.Now().Format(time.RFC3339))
-	return err
-}
-
-func insertTestTranslation(ctx context.Context, db database.Database, postID, locale, title, content string) error {
-	translationContent := &PostTranslationContent{
-		Title:   title,
-		Content: content,
-	}
-
-	jsonContent, err := translationContent.ToJSON()
-	if err != nil {
-		return err
-	}
-
-	translationID := uuid.New().String()
-	_, err = db.Exec(ctx, `
-		INSERT INTO translations (id, translatable_id, translatable, locale, content, created_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, translationID, postID, TranslatableTypePost, locale, jsonContent, time.Now().Format(time.RFC3339))
 	return err
 }

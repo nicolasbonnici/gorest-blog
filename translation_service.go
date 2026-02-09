@@ -393,14 +393,11 @@ func (s *TranslationService) translationExists(ctx context.Context, postID uuid.
 	return rows.Next(), nil
 }
 
-// PostWithTranslationsResult represents the result of a paginated posts query with translations
 type PostWithTranslationsResult struct {
 	Posts []*Post
 	Total *int
 }
 
-// LoadPostsWithTranslations retrieves posts with their translations in a single query using JOIN
-// This eliminates the N+1 query problem by fetching all data at once
 func (s *TranslationService) LoadPostsWithTranslations(ctx context.Context, limit, offset int, includeCount bool, conditions []query.Condition, orderBy []crud.OrderByClause) (*PostWithTranslationsResult, error) {
 	sql, args, err := s.buildJoinQuery(limit, offset, conditions, orderBy)
 	if err != nil {
@@ -427,9 +424,11 @@ func (s *TranslationService) LoadPostsWithTranslations(ctx context.Context, limi
 			createdAt   interface{}
 			locale      *string
 			content     *string
+			metricName  *string
+			metricValue *int64
 		)
 
-		if err := rows.Scan(&id, &userID, &slug, &status, &publishedAt, &updatedAt, &createdAt, &locale, &content); err != nil {
+		if err := rows.Scan(&id, &userID, &slug, &status, &publishedAt, &updatedAt, &createdAt, &locale, &content, &metricName, &metricValue); err != nil {
 			return nil, fmt.Errorf("scan failed: %w", err)
 		}
 
@@ -464,6 +463,7 @@ func (s *TranslationService) LoadPostsWithTranslations(ctx context.Context, limi
 				UpdatedAt:    updatedAtTime,
 				CreatedAt:    createdAtTime,
 				Translations: make(map[string]*PostTranslationContent),
+				Metrics:      &PostMetrics{PostID: id, Views: 0, Likes: 0, Comments: 0},
 			}
 			postsMap[id] = post
 			postOrder = append(postOrder, id)
@@ -475,6 +475,17 @@ func (s *TranslationService) LoadPostsWithTranslations(ctx context.Context, limi
 				return nil, fmt.Errorf("failed to parse translation for post %s, locale %s: %w", id, *locale, err)
 			}
 			post.Translations[*locale] = translationContent
+		}
+
+		if metricName != nil && metricValue != nil && post.Metrics != nil {
+			switch *metricName {
+			case MetricNameViews:
+				post.Metrics.Views = *metricValue
+			case MetricNameLikes:
+				post.Metrics.Likes = *metricValue
+			case MetricNameComments:
+				post.Metrics.Comments = *metricValue
+			}
 		}
 	}
 
@@ -504,7 +515,7 @@ func (s *TranslationService) LoadPostsWithTranslations(ctx context.Context, limi
 	return result, nil
 }
 
-// buildJoinQuery constructs a SQL query with JOIN to fetch posts and translations
+// buildJoinQuery constructs a SQL query with JOIN to fetch posts, translations, and metrics
 func (s *TranslationService) buildJoinQuery(limit, offset int, conditions []query.Condition, orderBy []crud.OrderByClause) (string, []interface{}, error) {
 	dialect := s.db.Dialect()
 	args := []interface{}{}
@@ -512,11 +523,18 @@ func (s *TranslationService) buildJoinQuery(limit, offset int, conditions []quer
 
 	baseSQL := `SELECT
 		p.id, p.user_id, p.slug, p.status, p.published_at, p.updated_at, p.created_at,
-		t.locale, t.content
+		t.locale, t.content,
+		m.name, m.value
 	FROM post p
 	LEFT JOIN translations t ON t.translatable_id = p.id AND t.translatable = ` + dialect.Placeholder(argPos)
 
 	args = append(args, TranslatableTypePost)
+	argPos++
+
+	baseSQL += `
+	LEFT JOIN metrics m ON m.resource_id = p.id AND m.resource = ` + dialect.Placeholder(argPos)
+
+	args = append(args, MetricResourcePost)
 	argPos++
 
 	whereClauses := []string{}

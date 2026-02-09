@@ -17,6 +17,7 @@ type Post struct {
 	UpdatedAt    *time.Time                          `json:"updatedAt,omitempty" db:"updated_at"`
 	CreatedAt    *time.Time                          `json:"createdAt,omitempty" db:"created_at"`
 	Translations map[string]*PostTranslationContent  `json:"translations" db:"-"`
+	Metrics      *PostMetrics                        `json:"metrics,omitempty" db:"-"`
 }
 
 func (Post) TableName() string {

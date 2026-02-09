@@ -1,6 +1,7 @@
 package blog
 
 import (
+	"context"
 	"net/url"
 	"time"
 
@@ -99,12 +100,23 @@ func (r *PostResource) Get(c *fiber.Ctx) error {
 		return c.Status(404).JSON(fiber.Map{"error": "Not found"})
 	}
 
-	// Always fetch translations
 	translationService := NewTranslationService(r.DB)
 	translations, err := translationService.ListTranslations(ctx, id)
 	if err == nil && len(translations) > 0 {
 		item.Translations = translations
 	}
+
+	metricsService := NewMetricsService(r.DB)
+	metrics, err := metricsService.GetMetrics(ctx, id)
+	if err == nil {
+		item.Metrics = metrics
+	}
+
+	// Asynchronously increment view count
+	go func() {
+		bgCtx := context.Background()
+		_ = metricsService.IncrementViews(bgCtx, id)
+	}()
 
 	return response.SendFormatted(c, 200, item)
 }
@@ -150,12 +162,17 @@ func (r *PostResource) Create(c *fiber.Ctx) error {
 		}
 	}
 	if err := translationService.CreateTranslations(ctx, item.Id, req.Translations, userUUID); err != nil {
-		// Rollback: delete the post if translation creation fails
 		_ = r.CRUD.Delete(ctx, item.Id)
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to create translations: " + err.Error()})
 	}
 
-	// Fetch post with translations
+	metricsService := NewMetricsService(r.DB)
+	if err := metricsService.InitializeMetrics(ctx, item.Id); err != nil {
+		_ = translationService.DeleteAllTranslations(ctx, item.Id)
+		_ = r.CRUD.Delete(ctx, item.Id)
+		return c.Status(500).JSON(fiber.Map{"error": "Failed to initialize metrics: " + err.Error()})
+	}
+
 	created, err := r.CRUD.GetByID(ctx, item.Id)
 	if err != nil {
 		return response.SendFormatted(c, 201, item)
@@ -164,6 +181,11 @@ func (r *PostResource) Create(c *fiber.Ctx) error {
 	translations, err := translationService.ListTranslations(ctx, item.Id)
 	if err == nil && len(translations) > 0 {
 		created.Translations = translations
+	}
+
+	metrics, err := metricsService.GetMetrics(ctx, item.Id)
+	if err == nil {
+		created.Metrics = metrics
 	}
 
 	return response.SendFormatted(c, 201, created)
@@ -237,7 +259,7 @@ func (r *PostResource) Update(c *fiber.Ctx) error {
 		}
 	}
 
-	// Fetch post with all translations
+	// Fetch post with all translations and metrics
 	updated, err := r.CRUD.GetByID(ctx, id)
 	if err != nil {
 		updated = existing
@@ -247,6 +269,12 @@ func (r *PostResource) Update(c *fiber.Ctx) error {
 	translations, err := translationService.ListTranslations(ctx, id)
 	if err == nil && len(translations) > 0 {
 		updated.Translations = translations
+	}
+
+	metricsService := NewMetricsService(r.DB)
+	metrics, err := metricsService.GetMetrics(ctx, id)
+	if err == nil {
+		updated.Metrics = metrics
 	}
 
 	return response.SendFormatted(c, 200, updated)
