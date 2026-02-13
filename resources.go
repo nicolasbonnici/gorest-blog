@@ -28,14 +28,16 @@ type PostResource struct {
 
 func RegisterPostRoutes(app *fiber.App, db database.Database, config *Config) {
 	rbacConfig := rbac.Config{
-		DefaultPolicy: rbac.DenyAll,
-		SuperuserRole: "admin",
-		RoleHierarchy: map[string][]string{
+		DefaultPolicy:      rbac.DenyAll,
+		SuperuserRole:      "admin",
+		RoleHierarchy:      map[string][]string{
 			"writer":    {"moderator"},
 			"moderator": {"reader"},
 		},
-		CacheEnabled: true,
-		StrictMode:   false,
+		CacheEnabled:       true,
+		CacheTTL:           300,
+		StrictMode:         false,
+		DefaultFieldPolicy: "deny",
 	}
 
 	voter, err := rbac.NewVoter(rbacConfig)
@@ -165,8 +167,8 @@ func (r *PostResource) Create(c *fiber.Ctx) error {
 
 	ctx := auth.Context(c)
 
+	// Build item with user-provided fields for validation
 	var item Post
-	item.Id = uuid.New().String()
 	item.Slug = req.Slug
 	item.Status = req.Status
 
@@ -179,9 +181,13 @@ func (r *PostResource) Create(c *fiber.Ctx) error {
 		item.PublishedAt = &now
 	}
 
+	// Validate user-provided fields
 	if err := r.Voter.ValidateWrite(ctx, &item); err != nil {
 		return c.Status(403).JSON(fiber.Map{"error": err.Error()})
 	}
+
+	// Set system-generated fields after validation
+	item.Id = uuid.New().String()
 
 	// Create post record without title/content
 	if err := r.CRUD.Create(ctx, item); err != nil {
@@ -271,6 +277,12 @@ func (r *PostResource) Update(c *fiber.Ctx) error {
 	if req.PublishedAt != nil {
 		updateItem.PublishedAt = req.PublishedAt
 	}
+
+	// Clear read-only fields before RBAC validation
+	updateItem.Id = ""
+	updateItem.CreatedAt = nil
+	updateItem.UpdatedAt = nil
+	updateItem.Metrics = nil
 
 	if err := r.Voter.ValidateWrite(ctx, &updateItem); err != nil {
 		return c.Status(403).JSON(fiber.Map{"error": err.Error()})
