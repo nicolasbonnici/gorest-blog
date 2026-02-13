@@ -20,26 +20,26 @@ func insertDefaultRolesUp(ctx context.Context, db database.Database) error {
 	// Insert default roles: reader, moderator, writer
 	if err := migrations.SQL(ctx, db, migrations.DialectSQL{
 		Postgres: `
-			INSERT INTO roles (id, name, description, parent, created_at)
+			INSERT INTO roles (name, description, parent)
 			VALUES
-				('reader', 'reader', 'Default authenticated user role with read access, can like and comment', NULL, CURRENT_TIMESTAMP),
-				('moderator', 'moderator', 'Can moderate content and manage posts', 'reader', CURRENT_TIMESTAMP),
-				('writer', 'writer', 'Can create, edit, and delete posts', 'moderator', CURRENT_TIMESTAMP)
-			ON CONFLICT (id) DO NOTHING;
+				('reader', 'Default authenticated user role with read access, can like and comment', NULL),
+				('moderator', 'Can moderate content and manage posts', 'reader'),
+				('writer', 'Can create, edit, and delete posts', 'moderator')
+			ON CONFLICT (name) DO NOTHING;
 		`,
 		MySQL: `
-			INSERT IGNORE INTO roles (id, name, description, parent, created_at)
+			INSERT IGNORE INTO roles (name, description, parent)
 			VALUES
-				('reader', 'reader', 'Default authenticated user role with read access, can like and comment', NULL, NOW()),
-				('moderator', 'moderator', 'Can moderate content and manage posts', 'reader', NOW()),
-				('writer', 'writer', 'Can create, edit, and delete posts', 'moderator', NOW());
+				('reader', 'Default authenticated user role with read access, can like and comment', NULL),
+				('moderator', 'Can moderate content and manage posts', 'reader'),
+				('writer', 'Can create, edit, and delete posts', 'moderator');
 		`,
 		SQLite: `
-			INSERT OR IGNORE INTO roles (id, name, description, parent, created_at)
+			INSERT OR IGNORE INTO roles (name, description, parent)
 			VALUES
-				('reader', 'reader', 'Default authenticated user role with read access, can like and comment', NULL, datetime('now')),
-				('moderator', 'moderator', 'Can moderate content and manage posts', 'reader', datetime('now')),
-				('writer', 'writer', 'Can create, edit, and delete posts', 'moderator', datetime('now'));
+				('reader', 'Default authenticated user role with read access, can like and comment', NULL),
+				('moderator', 'Can moderate content and manage posts', 'reader'),
+				('writer', 'Can create, edit, and delete posts', 'moderator');
 		`,
 	}); err != nil {
 		return err
@@ -51,9 +51,9 @@ func insertDefaultRolesUp(ctx context.Context, db database.Database) error {
 func insertDefaultRolesDown(ctx context.Context, db database.Database) error {
 	// Remove default roles
 	if err := migrations.SQL(ctx, db, migrations.DialectSQL{
-		Postgres: `DELETE FROM roles WHERE id IN ('reader', 'moderator', 'writer');`,
-		MySQL:    `DELETE FROM roles WHERE id IN ('reader', 'moderator', 'writer');`,
-		SQLite:   `DELETE FROM roles WHERE id IN ('reader', 'moderator', 'writer');`,
+		Postgres: `DELETE FROM roles WHERE name IN ('reader', 'moderator', 'writer');`,
+		MySQL:    `DELETE FROM roles WHERE name IN ('reader', 'moderator', 'writer');`,
+		SQLite:   `DELETE FROM roles WHERE name IN ('reader', 'moderator', 'writer');`,
 	}); err != nil {
 		return err
 	}
