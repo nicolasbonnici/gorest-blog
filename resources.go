@@ -98,7 +98,7 @@ func (r *PostResource) List(c *fiber.Ctx) error {
 		}
 	}
 
-	ctx := auth.Context(c)
+	ctx := c.UserContext()
 
 	translationService := NewTranslationService(r.DB)
 	result, err := translationService.LoadPostsWithTranslations(ctx, limit, offset, includeCount, filters.Conditions(), orderByClauses)
@@ -121,7 +121,7 @@ func (r *PostResource) List(c *fiber.Ctx) error {
 
 func (r *PostResource) Get(c *fiber.Ctx) error {
 	id := c.Params("id")
-	ctx := auth.Context(c)
+	ctx := c.UserContext()
 
 	item, err := r.CRUD.GetByID(ctx, id)
 	if err != nil {
@@ -165,7 +165,7 @@ func (r *PostResource) Create(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx := auth.Context(c)
+	ctx := c.UserContext()
 
 	// Build item with user-provided fields for validation
 	var item Post
@@ -254,7 +254,7 @@ func (r *PostResource) Update(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	ctx := auth.Context(c)
+	ctx := c.UserContext()
 
 	// Fetch existing post
 	existing, err := r.CRUD.GetByID(ctx, id)
@@ -346,7 +346,7 @@ func (r *PostResource) Update(c *fiber.Ctx) error {
 
 func (r *PostResource) Delete(c *fiber.Ctx) error {
 	id := c.Params("id")
-	ctx := auth.Context(c)
+	ctx := c.UserContext()
 
 	// Delete all translations first
 	translationService := NewTranslationService(r.DB)
