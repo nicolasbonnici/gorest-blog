@@ -172,6 +172,14 @@ func (r *PostResource) Create(c *fiber.Ctx) error {
 	item.Slug = req.Slug
 	item.Status = req.Status
 
+	// Validate user-provided fields
+	if err := r.Voter.ValidateWrite(ctx, &item); err != nil {
+		return c.Status(403).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Set system-generated fields after validation
+	item.Id = uuid.New().String()
+
 	if user := auth.GetAuthenticatedUser(c); user != nil {
 		item.UserId = &user.UserID
 	}
@@ -180,14 +188,6 @@ func (r *PostResource) Create(c *fiber.Ctx) error {
 		now := time.Now()
 		item.PublishedAt = &now
 	}
-
-	// Validate user-provided fields
-	if err := r.Voter.ValidateWrite(ctx, &item); err != nil {
-		return c.Status(403).JSON(fiber.Map{"error": err.Error()})
-	}
-
-	// Set system-generated fields after validation
-	item.Id = uuid.New().String()
 
 	// Create post record without title/content
 	if err := r.CRUD.Create(ctx, item); err != nil {
