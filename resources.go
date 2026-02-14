@@ -37,7 +37,7 @@ func RegisterPostRoutes(app *fiber.App, db database.Database, config *Config) {
 		CacheEnabled:       true,
 		CacheTTL:           300,
 		StrictMode:         false,
-		DefaultFieldPolicy: "deny",
+		DefaultFieldPolicy: "allow",
 	}
 
 	voter, err := rbac.NewVoter(rbacConfig)
