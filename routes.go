@@ -2,8 +2,8 @@ package blog
 
 import (
 	"github.com/gofiber/fiber/v2"
-	"github.com/nicolasbonnici/gorest/database"
 	"github.com/nicolasbonnici/gorest-blog/importer"
+	"github.com/nicolasbonnici/gorest/database"
 )
 
 func RegisterRoutes(app *fiber.App, db database.Database, config *Config) {

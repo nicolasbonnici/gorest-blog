@@ -28,9 +28,9 @@ type PostResource struct {
 
 func RegisterPostRoutes(app *fiber.App, db database.Database, config *Config) {
 	rbacConfig := rbac.Config{
-		DefaultPolicy:      rbac.DenyAll,
-		SuperuserRole:      "admin",
-		RoleHierarchy:      map[string][]string{
+		DefaultPolicy: rbac.DenyAll,
+		SuperuserRole: "admin",
+		RoleHierarchy: map[string][]string{
 			"writer":    {"moderator"},
 			"moderator": {"reader"},
 		},
