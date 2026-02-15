@@ -48,3 +48,5 @@ vendor/
 # Logs
 *.log
 logs/
+
+CLAUDE.md

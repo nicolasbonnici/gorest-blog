@@ -71,6 +71,7 @@ func Run(args []string) int {
 	userID := fs.String("user-id", "", "User ID to assign imported posts to (required)")
 	truncate := fs.Bool("truncate", false, "Delete all existing posts before importing")
 	dryRun := fs.Bool("dry-run", false, "Preview import without saving")
+	importComments := fs.Bool("import-comments", false, "Import comments along with posts")
 	listEngines := fs.Bool("list-engines", false, "List available engines")
 
 	if err := fs.Parse(args); err != nil {
@@ -123,13 +124,14 @@ func Run(args []string) int {
 	service := importer.GetServiceFactory()(db, reporter)
 
 	opts := importer.ImportOptions{
-		Source:     *source,
-		UserID:     *userID,
-		Username:   *username,
-		ArticleURL: *articleURL,
-		ArticleID:  *articleID,
-		Truncate:   *truncate,
-		DryRun:     *dryRun,
+		Source:         *source,
+		UserID:         *userID,
+		Username:       *username,
+		ArticleURL:     *articleURL,
+		ArticleID:      *articleID,
+		Truncate:       *truncate,
+		DryRun:         *dryRun,
+		ImportComments: *importComments,
 	}
 
 	if *dryRun {

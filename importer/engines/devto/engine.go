@@ -33,8 +33,8 @@ func (e *Engine) FetchByUsername(ctx context.Context, username string) ([]engine
 		return []engines.Post{}, nil
 	}
 
-	// Fetch full details for each article to get the body_markdown
-	fullArticles := make([]DevToArticle, 0, len(devtoArticles))
+	// Fetch full details for each article to get the body_markdown and comments
+	posts := make([]engines.Post, 0, len(devtoArticles))
 	for _, article := range devtoArticles {
 		fullArticle, err := e.client.GetArticleByID(ctx, article.ID)
 		if err != nil {
@@ -42,10 +42,18 @@ func (e *Engine) FetchByUsername(ctx context.Context, username string) ([]engine
 			fmt.Printf("Warning: failed to fetch full details for article %d: %v\n", article.ID, err)
 			continue
 		}
-		fullArticles = append(fullArticles, *fullArticle)
+
+		// Fetch comments for this article
+		comments, err := e.client.GetCommentsByArticleID(ctx, article.ID)
+		if err != nil {
+			// Log error but continue without comments
+			fmt.Printf("Warning: failed to fetch comments for article %d: %v\n", article.ID, err)
+			comments = []DevToComment{}
+		}
+
+		posts = append(posts, MapPost(*fullArticle, comments))
 	}
 
-	posts := MapPosts(fullArticles)
 	return posts, nil
 }
 
@@ -60,7 +68,15 @@ func (e *Engine) FetchByID(ctx context.Context, id string) (*engines.Post, error
 		return nil, fmt.Errorf("failed to fetch article from dev.to: %w", err)
 	}
 
-	post := MapPost(*devtoArticle)
+	// Fetch comments for this article
+	comments, err := e.client.GetCommentsByArticleID(ctx, articleID)
+	if err != nil {
+		// Log error but continue without comments
+		fmt.Printf("Warning: failed to fetch comments for article %d: %v\n", articleID, err)
+		comments = []DevToComment{}
+	}
+
+	post := MapPost(*devtoArticle, comments)
 	return &post, nil
 }
 
@@ -70,7 +86,16 @@ func (e *Engine) FetchByURL(ctx context.Context, url string) (*engines.Post, err
 		return nil, fmt.Errorf("failed to fetch article from dev.to: %w", err)
 	}
 
-	post := MapPost(*devtoArticle)
+	// Extract article ID to fetch comments
+	articleID := devtoArticle.ID
+	comments, err := e.client.GetCommentsByArticleID(ctx, articleID)
+	if err != nil {
+		// Log error but continue without comments
+		fmt.Printf("Warning: failed to fetch comments for article %d: %v\n", articleID, err)
+		comments = []DevToComment{}
+	}
+
+	post := MapPost(*devtoArticle, comments)
 	return &post, nil
 }
 

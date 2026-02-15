@@ -75,6 +75,24 @@ type DevToArticle struct {
 	PublicReactions int       `json:"public_reactions_count"`
 }
 
+type DevToComment struct {
+	ID        string             `json:"id_code"`
+	CreatedAt time.Time          `json:"created_at"`
+	BodyHTML  string             `json:"body_html"`
+	Children  []DevToComment     `json:"children"`
+	User      DevToCommentAuthor `json:"user,omitempty"`
+}
+
+type DevToCommentAuthor struct {
+	Name            string `json:"name"`
+	Username        string `json:"username"`
+	ProfileImage    string `json:"profile_image"`
+	ProfileImage90  string `json:"profile_image_90"`
+	GithubUsername  string `json:"github_username"`
+	TwitterUsername string `json:"twitter_username"`
+	WebsiteURL      string `json:"website_url"`
+}
+
 func NewClient() *Client {
 	return &Client{
 		baseURL: DefaultBaseURL,
@@ -167,6 +185,26 @@ func (c *Client) extractArticleIDFromURL(articleURL string) (int, error) {
 	}
 
 	return id, nil
+}
+
+func (c *Client) GetCommentsByArticleID(ctx context.Context, articleID int) ([]DevToComment, error) {
+	if articleID <= 0 {
+		return nil, fmt.Errorf("invalid article ID: %d", articleID)
+	}
+
+	endpoint := fmt.Sprintf("%s/comments", c.baseURL)
+
+	params := url.Values{}
+	params.Add("a_id", fmt.Sprintf("%d", articleID))
+
+	fullURL := fmt.Sprintf("%s?%s", endpoint, params.Encode())
+
+	var comments []DevToComment
+	if err := c.doRequest(ctx, "GET", fullURL, &comments); err != nil {
+		return nil, fmt.Errorf("failed to fetch comments for article %d: %w", articleID, err)
+	}
+
+	return comments, nil
 }
 
 func (c *Client) doRequest(ctx context.Context, method, url string, result interface{}) error {

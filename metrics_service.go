@@ -118,6 +118,66 @@ func (s *MetricsService) InitializeMetrics(ctx context.Context, postID string) e
 	return nil
 }
 
+// SetMetric sets a metric to a specific value (used for importing)
+func (s *MetricsService) SetMetric(ctx context.Context, postID, metricName string, value int64) error {
+	postUUID, err := uuid.Parse(postID)
+	if err != nil {
+		return fmt.Errorf("invalid post ID: %w", err)
+	}
+
+	var sql string
+	var args []interface{}
+
+	switch s.db.DriverName() {
+	case "postgres":
+		sql = `
+			INSERT INTO metrics (resource, resource_id, name, value)
+			VALUES ($1, $2, $3, $4)
+			ON CONFLICT (resource, resource_id, name)
+			DO UPDATE SET value = $4
+		`
+		args = []interface{}{MetricResourcePost, postUUID, metricName, value}
+	case "mysql":
+		sql = `
+			INSERT INTO metrics (resource, resource_id, name, value)
+			VALUES (?, ?, ?, ?)
+			ON DUPLICATE KEY UPDATE value = ?
+		`
+		args = []interface{}{MetricResourcePost, postUUID.String(), metricName, value, value}
+	case "sqlite":
+		sql = `
+			INSERT INTO metrics (resource, resource_id, name, value)
+			VALUES (?, ?, ?, ?)
+			ON CONFLICT (resource, resource_id, name)
+			DO UPDATE SET value = ?
+		`
+		args = []interface{}{MetricResourcePost, postUUID.String(), metricName, value, value}
+	default:
+		return fmt.Errorf("unsupported database driver: %s", s.db.DriverName())
+	}
+
+	_, err = s.db.Exec(ctx, sql, args...)
+	if err != nil {
+		return fmt.Errorf("failed to set %s metric: %w", metricName, err)
+	}
+
+	return nil
+}
+
+// SetMetrics sets multiple metrics at once (convenience method for importing)
+func (s *MetricsService) SetMetrics(ctx context.Context, postID string, views, likes, comments int64) error {
+	if err := s.SetMetric(ctx, postID, MetricNameViews, views); err != nil {
+		return err
+	}
+	if err := s.SetMetric(ctx, postID, MetricNameLikes, likes); err != nil {
+		return err
+	}
+	if err := s.SetMetric(ctx, postID, MetricNameComments, comments); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (s *MetricsService) incrementMetric(ctx context.Context, postID, metricName string) error {
 	postUUID, err := uuid.Parse(postID)
 	if err != nil {

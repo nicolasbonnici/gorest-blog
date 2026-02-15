@@ -521,11 +521,49 @@ func (s *TranslationService) buildJoinQuery(limit, offset int, conditions []quer
 	args := []interface{}{}
 	argPos := 1
 
+	// Build WHERE clause for subquery
+	whereClauses := []string{}
+	for _, condition := range conditions {
+		condSQL, condArgs, nextParam := condition.ToSQL(dialect, argPos)
+		whereClauses = append(whereClauses, condSQL)
+		args = append(args, condArgs...)
+		argPos = nextParam
+	}
+
+	whereClause := ""
+	if len(whereClauses) > 0 {
+		whereClause = " WHERE "
+		for i, clause := range whereClauses {
+			if i > 0 {
+				whereClause += " AND "
+			}
+			whereClause += clause
+		}
+	}
+
+	// Build ORDER BY clause
+	orderClause := ""
+	if len(orderBy) > 0 {
+		orderClause = " ORDER BY "
+		for i, order := range orderBy {
+			if i > 0 {
+				orderClause += ", "
+			}
+			orderClause += order.Column + " " + order.Direction.String()
+		}
+	} else {
+		orderClause = " ORDER BY p.created_at DESC"
+	}
+
+	// Use subquery to limit distinct posts first, then join translations and metrics
 	baseSQL := `SELECT
 		p.id, p.user_id, p.slug, p.status, p.published_at, p.updated_at, p.created_at,
 		t.locale, t.content,
 		m.name, m.value
-	FROM post p
+	FROM (
+		SELECT id, user_id, slug, status, published_at, updated_at, created_at
+		FROM post p` + whereClause + orderClause + ` ` + dialect.LimitOffset(limit, offset) + `
+	) p
 	LEFT JOIN translations t ON t.translatable_id = p.id AND t.translatable = ` + dialect.Placeholder(argPos)
 
 	args = append(args, TranslatableTypePost)
@@ -535,39 +573,8 @@ func (s *TranslationService) buildJoinQuery(limit, offset int, conditions []quer
 	LEFT JOIN metrics m ON m.resource_id = p.id AND m.resource = ` + dialect.Placeholder(argPos)
 
 	args = append(args, MetricResourcePost)
-	argPos++
 
-	whereClauses := []string{}
-	for _, condition := range conditions {
-		condSQL, condArgs, nextParam := condition.ToSQL(dialect, argPos)
-		whereClauses = append(whereClauses, condSQL)
-		args = append(args, condArgs...)
-		argPos = nextParam
-	}
-
-	if len(whereClauses) > 0 {
-		baseSQL += " WHERE "
-		for i, clause := range whereClauses {
-			if i > 0 {
-				baseSQL += " AND "
-			}
-			baseSQL += clause
-		}
-	}
-
-	if len(orderBy) > 0 {
-		baseSQL += " ORDER BY "
-		for i, order := range orderBy {
-			if i > 0 {
-				baseSQL += ", "
-			}
-			baseSQL += order.Column + " " + order.Direction.String()
-		}
-	} else {
-		baseSQL += " ORDER BY p.created_at DESC"
-	}
-
-	baseSQL += " " + dialect.LimitOffset(limit, offset)
+	baseSQL += orderClause
 
 	return baseSQL, args, nil
 }

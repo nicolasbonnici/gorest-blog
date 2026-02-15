@@ -170,6 +170,32 @@ func (s *ImporterService) importPost(ctx context.Context, post importer.Post, op
 			return "", fmt.Errorf("failed to update translation: %w", err)
 		}
 
+		// Update metrics
+		metricsService := NewMetricsService(s.db)
+		if err := metricsService.SetMetrics(ctx, existing.Id, int64(post.ViewsCount), int64(post.LikesCount), int64(post.CommentsCount)); err != nil {
+			return "", fmt.Errorf("failed to update metrics: %w", err)
+		}
+
+		// Import comments if enabled and available (for updates, we only add new comments)
+		actualCommentsCount := 0
+		if opts.ImportComments && len(post.Comments) > 0 {
+			count, err := s.importComments(ctx, existing.Id, post.Comments, opts.UserID)
+			if err != nil {
+				// Log error but don't fail the import
+				if s.reporter != nil {
+					s.reporter.Error(fmt.Errorf("failed to import comments for post %s: %w", existing.Slug, err))
+				}
+			} else {
+				actualCommentsCount = count
+				// Update comment count metric with actual imported count
+				if err := metricsService.SetMetric(ctx, existing.Id, MetricNameComments, int64(actualCommentsCount)); err != nil {
+					if s.reporter != nil {
+						s.reporter.Error(fmt.Errorf("failed to update comment count metric: %w", err))
+					}
+				}
+			}
+		}
+
 		return "updated", nil
 	}
 
@@ -191,6 +217,34 @@ func (s *ImporterService) importPost(ctx context.Context, post importer.Post, op
 		// Rollback: delete the post if translation creation fails
 		_ = s.crud.Delete(ctx, postModel.Id)
 		return "", fmt.Errorf("failed to create translations: %w", err)
+	}
+
+	// Set initial metrics
+	metricsService := NewMetricsService(s.db)
+	if err := metricsService.SetMetrics(ctx, postModel.Id, int64(post.ViewsCount), int64(post.LikesCount), int64(post.CommentsCount)); err != nil {
+		// Rollback: delete the post if metrics creation fails
+		_ = s.crud.Delete(ctx, postModel.Id)
+		return "", fmt.Errorf("failed to set metrics: %w", err)
+	}
+
+	// Import comments if enabled and available
+	actualCommentsCount := 0
+	if opts.ImportComments && len(post.Comments) > 0 {
+		count, err := s.importComments(ctx, postModel.Id, post.Comments, opts.UserID)
+		if err != nil {
+			// Log error but don't fail the import
+			if s.reporter != nil {
+				s.reporter.Error(fmt.Errorf("failed to import comments for post %s: %w", postModel.Slug, err))
+			}
+		} else {
+			actualCommentsCount = count
+			// Update comment count metric with actual imported count
+			if err := metricsService.SetMetric(ctx, postModel.Id, MetricNameComments, int64(actualCommentsCount)); err != nil {
+				if s.reporter != nil {
+					s.reporter.Error(fmt.Errorf("failed to update comment count metric: %w", err))
+				}
+			}
+		}
 	}
 
 	return "created", nil
@@ -322,4 +376,84 @@ func (s *ImporterService) findBySlug(ctx context.Context, slug string) (*Post, e
 	}
 
 	return &post, nil
+}
+
+// importComments recursively imports comments and their children, returns count of imported comments
+func (s *ImporterService) importComments(ctx context.Context, postID string, comments []engines.Comment, userID string) (int, error) {
+	totalCount := 0
+	for _, comment := range comments {
+		count, err := s.importComment(ctx, postID, comment, nil, userID)
+		if err != nil {
+			return totalCount, fmt.Errorf("failed to import comment %s: %w", comment.ID, err)
+		}
+		totalCount += count
+	}
+	return totalCount, nil
+}
+
+// importComment imports a single comment and recursively imports its children, returns count of imported comments
+func (s *ImporterService) importComment(ctx context.Context, postID string, comment engines.Comment, parentID *string, userID string) (int, error) {
+	// Check if comment already exists (by checking if we have this comment ID already imported)
+	// We'll use a simple check - if it fails to insert due to duplicate, skip it
+	commentID := uuid.New().String()
+	status := "published" // Default status for imported comments (valid statuses: awaiting, published, moderated, draft)
+
+	var createdAt *time.Time
+	if comment.CreatedAt != "" {
+		if parsedTime, err := time.Parse("2006-01-02T15:04:05Z07:00", comment.CreatedAt); err == nil {
+			createdAt = &parsedTime
+		}
+	}
+
+	// Insert comment into database
+	var sql string
+	var args []interface{}
+
+	switch s.db.DriverName() {
+	case "postgres":
+		sql = `
+			INSERT INTO comment (id, user_id, commentable_id, commentable, parent_id, content, status, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			ON CONFLICT (id) DO NOTHING
+		`
+		args = []interface{}{commentID, userID, postID, "post", parentID, comment.Content, status, createdAt}
+	case "mysql":
+		sql = `
+			INSERT IGNORE INTO comment (id, user_id, commentable_id, commentable, parent_id, content, status, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`
+		args = []interface{}{commentID, userID, postID, "post", parentID, comment.Content, status, createdAt}
+	case "sqlite":
+		sql = `
+			INSERT OR IGNORE INTO comment (id, user_id, commentable_id, commentable, parent_id, content, status, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`
+		args = []interface{}{commentID, userID, postID, "post", parentID, comment.Content, status, createdAt}
+	default:
+		return 0, fmt.Errorf("unsupported database driver: %s", s.db.DriverName())
+	}
+
+	result, err := s.db.Exec(ctx, sql, args...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to insert comment: %w", err)
+	}
+
+	// Count this comment if it was actually inserted
+	count := 0
+	if rowsAffected, err := result.RowsAffected(); err == nil && rowsAffected > 0 {
+		count = 1
+	}
+
+	// Recursively import child comments
+	if len(comment.Children) > 0 {
+		for _, child := range comment.Children {
+			childCount, err := s.importComment(ctx, postID, child, &commentID, userID)
+			if err != nil {
+				return count, fmt.Errorf("failed to import child comment: %w", err)
+			}
+			count += childCount
+		}
+	}
+
+	return count, nil
 }
