@@ -7,9 +7,78 @@ on:
     branches: [main]
 
 jobs:
+  quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Install quality tools
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          go install github.com/gordonklaus/ineffassign@latest
+          go install github.com/client9/misspell/cmd/misspell@latest
+          go install github.com/kisielk/errcheck@latest
+          go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
+
+      - name: Run gofmt
+        run: |
+          echo "Checking code formatting with gofmt -s..."
+          UNFORMATTED=$(gofmt -s -l .)
+          if [ -n "$UNFORMATTED" ]; then
+            echo "The following files are not formatted correctly:"
+            echo "$UNFORMATTED"
+            exit 1
+          fi
+          echo "All files are properly formatted"
+
+      - name: Run go vet
+        run: |
+          echo "Running go vet..."
+          go vet ./...
+
+      - name: Run staticcheck
+        run: |
+          echo "Running staticcheck..."
+          staticcheck ./...
+
+      - name: Run ineffassign
+        run: |
+          echo "Checking for ineffectual assignments..."
+          ineffassign ./...
+
+      - name: Run misspell
+        run: |
+          echo "Checking for spelling mistakes..."
+          misspell -error .
+
+      - name: Run errcheck
+        run: |
+          echo "Checking for unchecked errors..."
+          errcheck ./...
+
+      - name: Run gocyclo
+        run: |
+          echo "Checking cyclomatic complexity (threshold: 15)..."
+          gocyclo -over 15 .
+
+      - name: Cleanup
+        if: always()
+        run: go clean -cache -testcache -modcache
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    needs: [quality]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -28,6 +97,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    needs: [quality]
 
     services:
       postgres:
