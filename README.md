@@ -21,6 +21,20 @@ A production-ready blog plugin for GoREST with multi-language support, RBAC, and
 - GoREST 0.4+
 - PostgreSQL, MySQL, or SQLite
 
+
+## Development Environment
+
+To set up your development environment:
+
+```bash
+make install
+```
+
+This will:
+- Install Go dependencies
+- Install development tools (golangci-lint)
+- Set up git hooks (pre-commit linting and tests)
+
 ## Quick Start
 
 ```yaml
