@@ -410,83 +410,9 @@ func (s *TranslationService) LoadPostsWithTranslations(ctx context.Context, limi
 	}
 	defer func() { _ = rows.Close() }()
 
-	postsMap := make(map[string]*Post)
-	var postOrder []string
-
-	for rows.Next() {
-		var (
-			id          string
-			userID      *string
-			slug        string
-			status      string
-			publishedAt interface{}
-			updatedAt   interface{}
-			createdAt   interface{}
-			locale      *string
-			content     *string
-			metricName  *string
-			metricValue *int64
-		)
-
-		if err := rows.Scan(&id, &userID, &slug, &status, &publishedAt, &updatedAt, &createdAt, &locale, &content, &metricName, &metricValue); err != nil {
-			return nil, fmt.Errorf("scan failed: %w", err)
-		}
-
-		var publishedAtTime, updatedAtTime, createdAtTime *time.Time
-
-		if publishedAt != nil {
-			if t, err := parseTimeValue(publishedAt); err == nil {
-				publishedAtTime = t
-			}
-		}
-
-		if updatedAt != nil {
-			if t, err := parseTimeValue(updatedAt); err == nil {
-				updatedAtTime = t
-			}
-		}
-
-		if createdAt != nil {
-			if t, err := parseTimeValue(createdAt); err == nil {
-				createdAtTime = t
-			}
-		}
-
-		post, exists := postsMap[id]
-		if !exists {
-			post = &Post{
-				Id:           id,
-				UserId:       userID,
-				Slug:         slug,
-				Status:       types.PostStatus(status),
-				PublishedAt:  publishedAtTime,
-				UpdatedAt:    updatedAtTime,
-				CreatedAt:    createdAtTime,
-				Translations: make(map[string]*PostTranslationContent),
-				Metrics:      &PostMetrics{PostID: id, Views: 0, Likes: 0, Comments: 0},
-			}
-			postsMap[id] = post
-			postOrder = append(postOrder, id)
-		}
-
-		if locale != nil && content != nil {
-			translationContent, err := ParsePostTranslationContent(*content)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse translation for post %s, locale %s: %w", id, *locale, err)
-			}
-			post.Translations[*locale] = translationContent
-		}
-
-		if metricName != nil && metricValue != nil && post.Metrics != nil {
-			switch *metricName {
-			case MetricNameViews:
-				post.Metrics.Views = *metricValue
-			case MetricNameLikes:
-				post.Metrics.Likes = *metricValue
-			case MetricNameComments:
-				post.Metrics.Comments = *metricValue
-			}
-		}
+	postsMap, postOrder, err := s.processRows(rows)
+	if err != nil {
+		return nil, err
 	}
 
 	posts := make([]*Post, 0, len(postOrder))
@@ -500,19 +426,142 @@ func (s *TranslationService) LoadPostsWithTranslations(ctx context.Context, limi
 	}
 
 	if includeCount {
-		countSQL, countArgs, err := s.buildCountQuery(conditions)
+		total, err := s.getPostCount(ctx, conditions)
 		if err != nil {
-			return nil, fmt.Errorf("failed to build count query: %w", err)
-		}
-
-		var total int
-		if err := s.db.QueryRow(ctx, countSQL, countArgs...).Scan(&total); err != nil {
-			return nil, fmt.Errorf("failed to get total count: %w", err)
+			return nil, err
 		}
 		result.Total = &total
 	}
 
 	return result, nil
+}
+
+type postRowData struct {
+	id          string
+	userID      *string
+	slug        string
+	status      string
+	publishedAt interface{}
+	updatedAt   interface{}
+	createdAt   interface{}
+	locale      *string
+	content     *string
+	metricName  *string
+	metricValue *int64
+}
+
+func (s *TranslationService) processRows(rows database.Rows) (map[string]*Post, []string, error) {
+	postsMap := make(map[string]*Post)
+	var postOrder []string
+
+	for rows.Next() {
+		rowData, err := s.scanRow(rows)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		post := s.ensurePostExists(postsMap, &postOrder, rowData)
+
+		if err := s.addTranslationToPost(post, rowData); err != nil {
+			return nil, nil, err
+		}
+
+		s.addMetricToPost(post, rowData)
+	}
+
+	return postsMap, postOrder, nil
+}
+
+func (s *TranslationService) scanRow(rows database.Rows) (*postRowData, error) {
+	var rowData postRowData
+	err := rows.Scan(
+		&rowData.id,
+		&rowData.userID,
+		&rowData.slug,
+		&rowData.status,
+		&rowData.publishedAt,
+		&rowData.updatedAt,
+		&rowData.createdAt,
+		&rowData.locale,
+		&rowData.content,
+		&rowData.metricName,
+		&rowData.metricValue,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("scan failed: %w", err)
+	}
+	return &rowData, nil
+}
+
+func (s *TranslationService) ensurePostExists(postsMap map[string]*Post, postOrder *[]string, rowData *postRowData) *Post {
+	post, exists := postsMap[rowData.id]
+	if exists {
+		return post
+	}
+
+	post = &Post{
+		Id:           rowData.id,
+		UserId:       rowData.userID,
+		Slug:         rowData.slug,
+		Status:       types.PostStatus(rowData.status),
+		PublishedAt:  s.parseTime(rowData.publishedAt),
+		UpdatedAt:    s.parseTime(rowData.updatedAt),
+		CreatedAt:    s.parseTime(rowData.createdAt),
+		Translations: make(map[string]*PostTranslationContent),
+		Metrics:      &PostMetrics{PostID: rowData.id, Views: 0, Likes: 0, Comments: 0},
+	}
+	postsMap[rowData.id] = post
+	*postOrder = append(*postOrder, rowData.id)
+	return post
+}
+
+func (s *TranslationService) parseTime(val interface{}) *time.Time {
+	if val == nil {
+		return nil
+	}
+	t, _ := parseTimeValue(val)
+	return t
+}
+
+func (s *TranslationService) addTranslationToPost(post *Post, rowData *postRowData) error {
+	if rowData.locale == nil || rowData.content == nil {
+		return nil
+	}
+
+	translationContent, err := ParsePostTranslationContent(*rowData.content)
+	if err != nil {
+		return fmt.Errorf("failed to parse translation for post %s, locale %s: %w", rowData.id, *rowData.locale, err)
+	}
+	post.Translations[*rowData.locale] = translationContent
+	return nil
+}
+
+func (s *TranslationService) addMetricToPost(post *Post, rowData *postRowData) {
+	if rowData.metricName == nil || rowData.metricValue == nil || post.Metrics == nil {
+		return
+	}
+
+	switch *rowData.metricName {
+	case MetricNameViews:
+		post.Metrics.Views = *rowData.metricValue
+	case MetricNameLikes:
+		post.Metrics.Likes = *rowData.metricValue
+	case MetricNameComments:
+		post.Metrics.Comments = *rowData.metricValue
+	}
+}
+
+func (s *TranslationService) getPostCount(ctx context.Context, conditions []query.Condition) (int, error) {
+	countSQL, countArgs, err := s.buildCountQuery(conditions)
+	if err != nil {
+		return 0, fmt.Errorf("failed to build count query: %w", err)
+	}
+
+	var total int
+	if err := s.db.QueryRow(ctx, countSQL, countArgs...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("failed to get total count: %w", err)
+	}
+	return total, nil
 }
 
 // buildJoinQuery constructs a SQL query with JOIN to fetch posts, translations, and metrics

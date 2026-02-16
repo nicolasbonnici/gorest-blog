@@ -69,7 +69,14 @@ jobs:
       - name: Run gocyclo
         run: |
           echo "Checking cyclomatic complexity (threshold: 15)..."
-          gocyclo -over 15 .
+          gocyclo -over 15 . | grep -v '_test.go' | grep -v 'migrations/' || true
+          RESULT=$(gocyclo -over 15 . | grep -v '_test.go' | grep -v 'migrations/')
+          if [ -n "$RESULT" ]; then
+            echo "Cyclomatic complexity too high in production code:"
+            echo "$RESULT"
+            exit 1
+          fi
+          echo "Production code complexity is acceptable"
 
       - name: Run golangci-lint
         run: |

@@ -167,18 +167,25 @@ func (r *PostResource) Create(c *fiber.Ctx) error {
 
 	ctx := c.UserContext()
 
-	// Build item with user-provided fields for validation
-	var item Post
-	item.Slug = req.Slug
-	item.Status = req.Status
+	item := r.buildPostFromRequest(c, &req)
 
-	// Validate user-provided fields
 	if err := r.Voter.ValidateWrite(ctx, &item); err != nil {
 		return c.Status(403).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	// Set system-generated fields after validation
-	item.Id = uuid.New().String()
+	if err := r.createPostWithDependencies(ctx, &item, req.Translations); err != nil {
+		return err
+	}
+
+	return r.buildCreateResponse(c, ctx, &item)
+}
+
+func (r *PostResource) buildPostFromRequest(c *fiber.Ctx, req *CreatePostRequest) Post {
+	item := Post{
+		Id:     uuid.New().String(),
+		Slug:   req.Slug,
+		Status: req.Status,
+	}
 
 	if user := auth.GetAuthenticatedUser(c); user != nil {
 		item.UserId = &user.UserID
@@ -189,12 +196,14 @@ func (r *PostResource) Create(c *fiber.Ctx) error {
 		item.PublishedAt = &now
 	}
 
-	// Create post record without title/content
-	if err := r.CRUD.Create(ctx, item); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	return item
+}
+
+func (r *PostResource) createPostWithDependencies(ctx context.Context, item *Post, translations map[string]*PostTranslationContent) error {
+	if err := r.CRUD.Create(ctx, *item); err != nil {
+		return fiber.NewError(500, err.Error())
 	}
 
-	// Create translations for all locales
 	translationService := NewTranslationService(r.DB)
 	var userUUID *uuid.UUID
 	if item.UserId != nil {
@@ -203,43 +212,49 @@ func (r *PostResource) Create(c *fiber.Ctx) error {
 			userUUID = &parsed
 		}
 	}
-	if err := translationService.CreateTranslations(ctx, item.Id, req.Translations, userUUID); err != nil {
+
+	if err := translationService.CreateTranslations(ctx, item.Id, translations, userUUID); err != nil {
 		_ = r.CRUD.Delete(ctx, item.Id)
-		return c.Status(500).JSON(fiber.Map{"error": "Failed to create translations: " + err.Error()})
+		return fiber.NewError(500, "Failed to create translations: "+err.Error())
 	}
 
 	metricsService := NewMetricsService(r.DB)
 	if err := metricsService.InitializeMetrics(ctx, item.Id); err != nil {
 		_ = translationService.DeleteAllTranslations(ctx, item.Id)
 		_ = r.CRUD.Delete(ctx, item.Id)
-		return c.Status(500).JSON(fiber.Map{"error": "Failed to initialize metrics: " + err.Error()})
+		return fiber.NewError(500, "Failed to initialize metrics: "+err.Error())
 	}
 
+	return nil
+}
+
+func (r *PostResource) buildCreateResponse(c *fiber.Ctx, ctx context.Context, item *Post) error {
 	created, err := r.CRUD.GetByID(ctx, item.Id)
 	if err != nil {
-		filtered, filterErr := r.Voter.FilterRead(ctx, &item)
-		if filterErr != nil {
-			return response.SendFormatted(c, 201, item)
-		}
-		return response.SendFormatted(c, 201, filtered)
+		return r.sendFilteredResponse(c, ctx, item, 201)
 	}
 
+	translationService := NewTranslationService(r.DB)
 	translations, err := translationService.ListTranslations(ctx, item.Id)
 	if err == nil && len(translations) > 0 {
 		created.Translations = translations
 	}
 
+	metricsService := NewMetricsService(r.DB)
 	metrics, err := metricsService.GetMetrics(ctx, item.Id)
 	if err == nil {
 		created.Metrics = metrics
 	}
 
-	filtered, err := r.Voter.FilterRead(ctx, created)
-	if err != nil {
-		return response.SendFormatted(c, 201, created)
-	}
+	return r.sendFilteredResponse(c, ctx, created, 201)
+}
 
-	return response.SendFormatted(c, 201, filtered)
+func (r *PostResource) sendFilteredResponse(c *fiber.Ctx, ctx context.Context, post *Post, statusCode int) error {
+	filtered, err := r.Voter.FilterRead(ctx, post)
+	if err != nil {
+		return response.SendFormatted(c, statusCode, post)
+	}
+	return response.SendFormatted(c, statusCode, filtered)
 }
 
 func (r *PostResource) Update(c *fiber.Ctx) error {
@@ -256,13 +271,27 @@ func (r *PostResource) Update(c *fiber.Ctx) error {
 
 	ctx := c.UserContext()
 
-	// Fetch existing post
 	existing, err := r.CRUD.GetByID(ctx, id)
 	if err != nil {
 		return c.Status(404).JSON(fiber.Map{"error": "Not found"})
 	}
 
-	// Create update object for validation
+	if err := r.validateAndApplyUpdates(ctx, existing, &req); err != nil {
+		return err
+	}
+
+	if err := r.CRUD.Update(ctx, id, *existing); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	if err := r.updateTranslations(ctx, id, existing.UserId, req.Translations); err != nil {
+		return err
+	}
+
+	return r.buildUpdateResponse(c, ctx, id, existing)
+}
+
+func (r *PostResource) validateAndApplyUpdates(ctx context.Context, existing *Post, req *UpdatePostRequest) error {
 	updateItem := *existing
 	if req.Slug != "" {
 		updateItem.Slug = req.Slug
@@ -285,7 +314,7 @@ func (r *PostResource) Update(c *fiber.Ctx) error {
 	updateItem.Metrics = nil
 
 	if err := r.Voter.ValidateWrite(ctx, &updateItem); err != nil {
-		return c.Status(403).JSON(fiber.Map{"error": err.Error()})
+		return fiber.NewError(403, err.Error())
 	}
 
 	// Apply validated changes
@@ -295,30 +324,33 @@ func (r *PostResource) Update(c *fiber.Ctx) error {
 	now := time.Now()
 	existing.UpdatedAt = &now
 
-	if err := r.CRUD.Update(ctx, id, *existing); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	return nil
+}
+
+func (r *PostResource) updateTranslations(ctx context.Context, postID string, userID *string, translations map[string]*PostTranslationContent) error {
+	if len(translations) == 0 {
+		return nil
 	}
 
-	// Update translations if provided
-	if len(req.Translations) > 0 {
-		translationService := NewTranslationService(r.DB)
-		var userUUID *uuid.UUID
-		if existing.UserId != nil {
-			parsed, err := uuid.Parse(*existing.UserId)
-			if err == nil {
-				userUUID = &parsed
-			}
-		}
-
-		// Update each translation
-		for locale, translation := range req.Translations {
-			if err := translationService.UpdateTranslation(ctx, id, locale, translation.Title, translation.Content, userUUID); err != nil {
-				return c.Status(500).JSON(fiber.Map{"error": "Failed to update translation for locale " + locale + ": " + err.Error()})
-			}
+	translationService := NewTranslationService(r.DB)
+	var userUUID *uuid.UUID
+	if userID != nil {
+		parsed, err := uuid.Parse(*userID)
+		if err == nil {
+			userUUID = &parsed
 		}
 	}
 
-	// Fetch post with all translations and metrics
+	for locale, translation := range translations {
+		if err := translationService.UpdateTranslation(ctx, postID, locale, translation.Title, translation.Content, userUUID); err != nil {
+			return fiber.NewError(500, "Failed to update translation for locale "+locale+": "+err.Error())
+		}
+	}
+
+	return nil
+}
+
+func (r *PostResource) buildUpdateResponse(c *fiber.Ctx, ctx context.Context, id string, existing *Post) error {
 	updated, err := r.CRUD.GetByID(ctx, id)
 	if err != nil {
 		updated = existing
