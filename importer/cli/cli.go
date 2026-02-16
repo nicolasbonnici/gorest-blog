@@ -80,65 +80,29 @@ func Run(args []string) int {
 	}
 
 	if *listEngines {
-		fmt.Println("Available import engines:")
-		for _, name := range engines.List() {
-			fmt.Printf("  - %s\n", name)
-		}
-		return 0
+		return handleListEngines()
 	}
 
-	if *userID == "" {
-		fmt.Fprintln(os.Stderr, "Error: --user-id is required")
-		fs.Usage()
-		return 1
-	}
-
-	if *username == "" && *articleURL == "" && *articleID == "" {
-		fmt.Fprintln(os.Stderr, "Error: one of --username, --url, or --id must be provided")
-		fs.Usage()
-		return 1
-	}
-
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		fmt.Fprintln(os.Stderr, "Error: DATABASE_URL environment variable is required")
+	if err := validateFlags(fs, *userID, *username, *articleURL, *articleID); err != nil {
 		return 1
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	db, err := database.Open("postgres", databaseURL)
+	db, err := setupDatabase()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: failed to connect to database: %v\n", err)
 		return 1
 	}
 	defer func() { _ = db.Close() }()
 
-	if importer.GetServiceFactory() == nil {
-		fmt.Fprintln(os.Stderr, "Error: importer service factory not set - make sure to import blog package")
+	service, err := createImporterService(db)
+	if err != nil {
 		return 1
 	}
 
-	reporter := &CLIProgressReporter{}
-	service := importer.GetServiceFactory()(db, reporter)
-
-	opts := importer.ImportOptions{
-		Source:         *source,
-		UserID:         *userID,
-		Username:       *username,
-		ArticleURL:     *articleURL,
-		ArticleID:      *articleID,
-		Truncate:       *truncate,
-		DryRun:         *dryRun,
-		ImportComments: *importComments,
-	}
-
-	if *dryRun {
-		fmt.Println("Running in DRY-RUN mode - no changes will be saved")
-	} else if *truncate {
-		fmt.Println("WARNING: All existing posts will be deleted before importing")
-	}
+	opts := buildImportOptions(*source, *userID, *username, *articleURL, *articleID, *truncate, *dryRun, *importComments)
+	printImportMode(*dryRun, *truncate)
 
 	result, err := service.Import(ctx, opts)
 	if err != nil {
@@ -146,6 +110,88 @@ func Run(args []string) int {
 		return 1
 	}
 
+	printImportSummary(result)
+
+	if result.Failed > 0 {
+		return 1
+	}
+
+	return 0
+}
+
+func handleListEngines() int {
+	fmt.Println("Available import engines:")
+	for _, name := range engines.List() {
+		fmt.Printf("  - %s\n", name)
+	}
+	return 0
+}
+
+func validateFlags(fs *flag.FlagSet, userID, username, articleURL, articleID string) error {
+	if userID == "" {
+		fmt.Fprintln(os.Stderr, "Error: --user-id is required")
+		fs.Usage()
+		return fmt.Errorf("user-id required")
+	}
+
+	if username == "" && articleURL == "" && articleID == "" {
+		fmt.Fprintln(os.Stderr, "Error: one of --username, --url, or --id must be provided")
+		fs.Usage()
+		return fmt.Errorf("source required")
+	}
+
+	return nil
+}
+
+func setupDatabase() (database.Database, error) {
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		fmt.Fprintln(os.Stderr, "Error: DATABASE_URL environment variable is required")
+		return nil, fmt.Errorf("DATABASE_URL not set")
+	}
+
+	db, err := database.Open("postgres", databaseURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to connect to database: %v\n", err)
+		return nil, err
+	}
+
+	return db, nil
+}
+
+func createImporterService(db database.Database) (importer.ImportService, error) {
+	if importer.GetServiceFactory() == nil {
+		fmt.Fprintln(os.Stderr, "Error: importer service factory not set - make sure to import blog package")
+		return nil, fmt.Errorf("service factory not set")
+	}
+
+	reporter := &CLIProgressReporter{}
+	service := importer.GetServiceFactory()(db, reporter)
+	return service, nil
+}
+
+func buildImportOptions(source, userID, username, articleURL, articleID string, truncate, dryRun, importComments bool) importer.ImportOptions {
+	return importer.ImportOptions{
+		Source:         source,
+		UserID:         userID,
+		Username:       username,
+		ArticleURL:     articleURL,
+		ArticleID:      articleID,
+		Truncate:       truncate,
+		DryRun:         dryRun,
+		ImportComments: importComments,
+	}
+}
+
+func printImportMode(dryRun, truncate bool) {
+	if dryRun {
+		fmt.Println("Running in DRY-RUN mode - no changes will be saved")
+	} else if truncate {
+		fmt.Println("WARNING: All existing posts will be deleted before importing")
+	}
+}
+
+func printImportSummary(result *importer.ImportResult) {
 	fmt.Println("\nImport Summary:")
 	fmt.Printf("  Total fetched: %d\n", result.TotalFetched)
 	fmt.Printf("  Created: %d\n", result.Created)
@@ -159,10 +205,4 @@ func Run(args []string) int {
 			fmt.Printf("  - %v\n", err)
 		}
 	}
-
-	if result.Failed > 0 {
-		return 1
-	}
-
-	return 0
 }

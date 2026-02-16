@@ -82,9 +82,9 @@ func TestPostTranslationContent_Validate(t *testing.T) {
 
 func TestPostTranslationContent_Sanitize(t *testing.T) {
 	tests := []struct {
-		name          string
-		input         *PostTranslationContent
-		expectedTitle string
+		name            string
+		input           *PostTranslationContent
+		expectedTitle   string
 		expectedContent string
 	}{
 		{

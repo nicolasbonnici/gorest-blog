@@ -36,56 +36,77 @@ func NewImporterService(db database.Database, reporter importer.ProgressReporter
 }
 
 func (s *ImporterService) Import(ctx context.Context, opts importer.ImportOptions) (*importer.ImportResult, error) {
+	if err := s.validateImportOptions(ctx, opts); err != nil {
+		return nil, err
+	}
+
 	engine, ok := engines.Get(opts.Source)
 	if !ok {
 		return nil, fmt.Errorf("unknown engine: %s (available: %v)", opts.Source, engines.List())
 	}
 
-	if opts.UserID == "" {
-		return nil, fmt.Errorf("user_id is required")
-	}
-
-	userExists, err := s.userExists(ctx, opts.UserID)
+	posts, err := s.fetchPosts(ctx, engine, opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to validate user: %w", err)
-	}
-	if !userExists {
-		return nil, fmt.Errorf("user_id '%s' does not exist", opts.UserID)
+		return nil, err
 	}
 
-	var posts []importer.Post
-
-	if opts.Username != "" {
-		posts, err = engine.FetchByUsername(ctx, opts.Username)
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch posts by username: %w", err)
-		}
-	} else if opts.ArticleURL != "" {
-		post, err := engine.FetchByURL(ctx, opts.ArticleURL)
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch post by URL: %w", err)
-		}
-		posts = []importer.Post{*post}
-	} else if opts.ArticleID != "" {
-		post, err := engine.FetchByID(ctx, opts.ArticleID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to fetch post by ID: %w", err)
-		}
-		posts = []importer.Post{*post}
-	} else {
-		return nil, fmt.Errorf("one of username, url, or id must be provided")
-	}
-
-	result := &importer.ImportResult{
-		TotalFetched: len(posts),
-		Errors:       make([]error, 0),
-	}
-
-	// Truncate existing posts if requested
 	if opts.Truncate && !opts.DryRun {
 		if err := s.truncatePosts(ctx); err != nil {
 			return nil, fmt.Errorf("failed to truncate posts: %w", err)
 		}
+	}
+
+	return s.processPosts(ctx, posts, opts)
+}
+
+func (s *ImporterService) validateImportOptions(ctx context.Context, opts importer.ImportOptions) error {
+	if opts.UserID == "" {
+		return fmt.Errorf("user_id is required")
+	}
+
+	userExists, err := s.userExists(ctx, opts.UserID)
+	if err != nil {
+		return fmt.Errorf("failed to validate user: %w", err)
+	}
+	if !userExists {
+		return fmt.Errorf("user_id '%s' does not exist", opts.UserID)
+	}
+
+	return nil
+}
+
+func (s *ImporterService) fetchPosts(ctx context.Context, engine engines.Engine, opts importer.ImportOptions) ([]importer.Post, error) {
+	if opts.Username != "" {
+		posts, err := engine.FetchByUsername(ctx, opts.Username)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch posts by username: %w", err)
+		}
+		return posts, nil
+	}
+
+	if opts.ArticleURL != "" {
+		post, err := engine.FetchByURL(ctx, opts.ArticleURL)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch post by URL: %w", err)
+		}
+		return []importer.Post{*post}, nil
+	}
+
+	if opts.ArticleID != "" {
+		post, err := engine.FetchByID(ctx, opts.ArticleID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch post by ID: %w", err)
+		}
+		return []importer.Post{*post}, nil
+	}
+
+	return nil, fmt.Errorf("one of username, url, or id must be provided")
+}
+
+func (s *ImporterService) processPosts(ctx context.Context, posts []importer.Post, opts importer.ImportOptions) (*importer.ImportResult, error) {
+	result := &importer.ImportResult{
+		TotalFetched: len(posts),
+		Errors:       make([]error, 0),
 	}
 
 	if s.reporter != nil {
@@ -107,14 +128,7 @@ func (s *ImporterService) Import(ctx context.Context, opts importer.ImportOption
 			continue
 		}
 
-		switch action {
-		case "created":
-			result.Created++
-		case "updated":
-			result.Updated++
-		case "skipped":
-			result.Skipped++
-		}
+		s.updateResultCounts(result, action)
 
 		select {
 		case <-ctx.Done():
@@ -130,11 +144,67 @@ func (s *ImporterService) Import(ctx context.Context, opts importer.ImportOption
 	return result, nil
 }
 
+func (s *ImporterService) updateResultCounts(result *importer.ImportResult, action string) {
+	switch action {
+	case "created":
+		result.Created++
+	case "updated":
+		result.Updated++
+	case "skipped":
+		result.Skipped++
+	}
+}
+
 func (s *ImporterService) importPost(ctx context.Context, post importer.Post, opts importer.ImportOptions) (string, error) {
 	postModel := s.postToModel(post, opts.UserID)
-
-	// Default locale for imported content (could be configurable)
 	defaultLocale := "en"
+
+	if opts.DryRun {
+		return s.handleDryRun(ctx, postModel.Slug)
+	}
+
+	existing, err := s.findBySlug(ctx, postModel.Slug)
+	if err == nil && existing != nil {
+		return s.updateExistingPost(ctx, existing, postModel, post, defaultLocale, opts)
+	}
+
+	return s.createNewPost(ctx, postModel, post, defaultLocale, opts)
+}
+
+func (s *ImporterService) handleDryRun(ctx context.Context, slug string) (string, error) {
+	existing, err := s.findBySlug(ctx, slug)
+	if err == nil && existing != nil {
+		return "updated", nil
+	}
+	return "created", nil
+}
+
+func (s *ImporterService) updateExistingPost(ctx context.Context, existing *Post, postModel Post, post importer.Post, defaultLocale string, opts importer.ImportOptions) (string, error) {
+	if err := s.crud.Update(ctx, existing.Id, postModel); err != nil {
+		return "", fmt.Errorf("update failed: %w", err)
+	}
+
+	userUUID := s.parseUserUUID(postModel.UserId)
+	translationService := NewTranslationService(s.db)
+	if err := translationService.UpdateTranslation(ctx, existing.Id, defaultLocale, post.Title, post.Content, userUUID); err != nil {
+		return "", fmt.Errorf("failed to update translation: %w", err)
+	}
+
+	metricsService := NewMetricsService(s.db)
+	if err := metricsService.SetMetrics(ctx, existing.Id, int64(post.ViewsCount), int64(post.LikesCount), int64(post.CommentsCount)); err != nil {
+		return "", fmt.Errorf("failed to update metrics: %w", err)
+	}
+
+	s.handleCommentImport(ctx, existing.Id, existing.Slug, post.Comments, opts, metricsService)
+
+	return "updated", nil
+}
+
+func (s *ImporterService) createNewPost(ctx context.Context, postModel Post, post importer.Post, defaultLocale string, opts importer.ImportOptions) (string, error) {
+	if err := s.crud.Create(ctx, postModel); err != nil {
+		return "", fmt.Errorf("create failed: %w", err)
+	}
+
 	translations := map[string]*PostTranslationContent{
 		defaultLocale: {
 			Title:   post.Title,
@@ -142,112 +212,53 @@ func (s *ImporterService) importPost(ctx context.Context, post importer.Post, op
 		},
 	}
 
-	if opts.DryRun {
-		existing, err := s.findBySlug(ctx, postModel.Slug)
-		if err == nil && existing != nil {
-			return "updated", nil
-		}
-		return "created", nil
-	}
-
-	existing, err := s.findBySlug(ctx, postModel.Slug)
-	if err == nil && existing != nil {
-		// Always update existing post (upsert behavior)
-		if err := s.crud.Update(ctx, existing.Id, postModel); err != nil {
-			return "", fmt.Errorf("update failed: %w", err)
-		}
-
-		// Update translation for default locale
-		translationService := NewTranslationService(s.db)
-		var userUUID *uuid.UUID
-		if postModel.UserId != nil {
-			parsed, err := uuid.Parse(*postModel.UserId)
-			if err == nil {
-				userUUID = &parsed
-			}
-		}
-		if err := translationService.UpdateTranslation(ctx, existing.Id, defaultLocale, post.Title, post.Content, userUUID); err != nil {
-			return "", fmt.Errorf("failed to update translation: %w", err)
-		}
-
-		// Update metrics
-		metricsService := NewMetricsService(s.db)
-		if err := metricsService.SetMetrics(ctx, existing.Id, int64(post.ViewsCount), int64(post.LikesCount), int64(post.CommentsCount)); err != nil {
-			return "", fmt.Errorf("failed to update metrics: %w", err)
-		}
-
-		// Import comments if enabled and available (for updates, we only add new comments)
-		actualCommentsCount := 0
-		if opts.ImportComments && len(post.Comments) > 0 {
-			count, err := s.importComments(ctx, existing.Id, post.Comments, opts.UserID)
-			if err != nil {
-				// Log error but don't fail the import
-				if s.reporter != nil {
-					s.reporter.Error(fmt.Errorf("failed to import comments for post %s: %w", existing.Slug, err))
-				}
-			} else {
-				actualCommentsCount = count
-				// Update comment count metric with actual imported count
-				if err := metricsService.SetMetric(ctx, existing.Id, MetricNameComments, int64(actualCommentsCount)); err != nil {
-					if s.reporter != nil {
-						s.reporter.Error(fmt.Errorf("failed to update comment count metric: %w", err))
-					}
-				}
-			}
-		}
-
-		return "updated", nil
-	}
-
-	// Create new post
-	if err := s.crud.Create(ctx, postModel); err != nil {
-		return "", fmt.Errorf("create failed: %w", err)
-	}
-
-	// Create translations
+	userUUID := s.parseUserUUID(postModel.UserId)
 	translationService := NewTranslationService(s.db)
-	var userUUID *uuid.UUID
-	if postModel.UserId != nil {
-		parsed, err := uuid.Parse(*postModel.UserId)
-		if err == nil {
-			userUUID = &parsed
-		}
-	}
 	if err := translationService.CreateTranslations(ctx, postModel.Id, translations, userUUID); err != nil {
-		// Rollback: delete the post if translation creation fails
 		_ = s.crud.Delete(ctx, postModel.Id)
 		return "", fmt.Errorf("failed to create translations: %w", err)
 	}
 
-	// Set initial metrics
 	metricsService := NewMetricsService(s.db)
 	if err := metricsService.SetMetrics(ctx, postModel.Id, int64(post.ViewsCount), int64(post.LikesCount), int64(post.CommentsCount)); err != nil {
-		// Rollback: delete the post if metrics creation fails
 		_ = s.crud.Delete(ctx, postModel.Id)
 		return "", fmt.Errorf("failed to set metrics: %w", err)
 	}
 
-	// Import comments if enabled and available
-	actualCommentsCount := 0
-	if opts.ImportComments && len(post.Comments) > 0 {
-		count, err := s.importComments(ctx, postModel.Id, post.Comments, opts.UserID)
-		if err != nil {
-			// Log error but don't fail the import
-			if s.reporter != nil {
-				s.reporter.Error(fmt.Errorf("failed to import comments for post %s: %w", postModel.Slug, err))
-			}
-		} else {
-			actualCommentsCount = count
-			// Update comment count metric with actual imported count
-			if err := metricsService.SetMetric(ctx, postModel.Id, MetricNameComments, int64(actualCommentsCount)); err != nil {
-				if s.reporter != nil {
-					s.reporter.Error(fmt.Errorf("failed to update comment count metric: %w", err))
-				}
-			}
-		}
-	}
+	s.handleCommentImport(ctx, postModel.Id, postModel.Slug, post.Comments, opts, metricsService)
 
 	return "created", nil
+}
+
+func (s *ImporterService) parseUserUUID(userID *string) *uuid.UUID {
+	if userID == nil {
+		return nil
+	}
+	parsed, err := uuid.Parse(*userID)
+	if err != nil {
+		return nil
+	}
+	return &parsed
+}
+
+func (s *ImporterService) handleCommentImport(ctx context.Context, postID, slug string, comments []engines.Comment, opts importer.ImportOptions, metricsService *MetricsService) {
+	if !opts.ImportComments || len(comments) == 0 {
+		return
+	}
+
+	count, err := s.importComments(ctx, postID, comments, opts.UserID)
+	if err != nil {
+		if s.reporter != nil {
+			s.reporter.Error(fmt.Errorf("failed to import comments for post %s: %w", slug, err))
+		}
+		return
+	}
+
+	if err := metricsService.SetMetric(ctx, postID, MetricNameComments, int64(count)); err != nil {
+		if s.reporter != nil {
+			s.reporter.Error(fmt.Errorf("failed to update comment count metric: %w", err))
+		}
+	}
 }
 
 func (s *ImporterService) postToModel(post importer.Post, userID string) Post {
