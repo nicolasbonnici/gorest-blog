@@ -9,7 +9,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/nicolasbonnici/gorest v0.4.11
 	github.com/nicolasbonnici/gorest-auth v0.1.10
-	github.com/nicolasbonnici/gorest-rbac v0.1.4
+	github.com/nicolasbonnici/gorest-rbac v0.1.5
 	github.com/schollz/progressbar/v3 v3.19.0
 )
 
@@ -30,7 +30,7 @@ require (
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/mattn/go-runewidth v0.0.19 // indirect
+	github.com/mattn/go-runewidth v0.0.20 // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
