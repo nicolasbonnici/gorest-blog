@@ -9,15 +9,17 @@ import (
 )
 
 type Post struct {
-	Id           string                             `json:"id,omitempty" db:"id" rbac:"read:*;write:none"`
-	UserId       *string                            `json:"userId,omitempty" db:"user_id" rbac:"read:*;write:writer"`
-	Slug         string                             `json:"slug" db:"slug" rbac:"read:*;write:writer"`
-	Status       types.PostStatus                   `json:"status" db:"status" rbac:"read:*;write:moderator,writer"`
-	PublishedAt  *time.Time                         `json:"publishedAt,omitempty" db:"published_at" rbac:"read:*;write:writer"`
-	UpdatedAt    *time.Time                         `json:"updatedAt,omitempty" db:"updated_at" rbac:"read:*;write:none"`
-	CreatedAt    *time.Time                         `json:"createdAt,omitempty" db:"created_at" rbac:"read:*;write:none"`
-	Translations map[string]*PostTranslationContent `json:"translations" db:"-" rbac:"read:*;write:writer"`
-	Metrics      *PostMetrics                       `json:"metrics,omitempty" db:"-" rbac:"read:*;write:none"`
+	Id             string                             `json:"id,omitempty" db:"id" rbac:"read:*;write:none"`
+	UserId         *string                            `json:"userId,omitempty" db:"user_id" rbac:"read:*;write:writer"`
+	Slug           string                             `json:"slug" db:"slug" rbac:"read:*;write:writer"`
+	Status         types.PostStatus                   `json:"status" db:"status" rbac:"read:*;write:moderator,writer"`
+	PublishedAt    *time.Time                         `json:"publishedAt,omitempty" db:"published_at" rbac:"read:*;write:writer"`
+	RemoteSourceID *string                            `json:"remoteSourceId,omitempty" db:"remote_source_id" rbac:"read:*;write:none"`
+	RemoteSource   *string                            `json:"remoteSource,omitempty" db:"remote_source" rbac:"read:*;write:none"`
+	UpdatedAt      *time.Time                         `json:"updatedAt,omitempty" db:"updated_at" rbac:"read:*;write:none"`
+	CreatedAt      *time.Time                         `json:"createdAt,omitempty" db:"created_at" rbac:"read:*;write:none"`
+	Translations   map[string]*PostTranslationContent `json:"translations" db:"-" rbac:"read:*;write:writer"`
+	Metrics        *PostMetrics                       `json:"metrics,omitempty" db:"-" rbac:"read:*;write:none"`
 }
 
 func (Post) TableName() string {

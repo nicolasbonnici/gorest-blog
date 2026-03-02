@@ -14,6 +14,7 @@ A production-ready blog plugin for GoREST with multi-language support, RBAC, and
 - **Built-in Migrations**: Automatic database schema management
 - **Multi-Database**: PostgreSQL, MySQL, and SQLite
 - **RESTful API**: Full CRUD operations
+- **Bidirectional Sync**: Import from and export to external platforms (dev.to)
 
 ## Requirements
 
@@ -238,6 +239,194 @@ Authorization: Bearer <token>
 }
 ```
 
+## Importer CLI - Bidirectional Sync
+
+The importer CLI allows you to sync posts between your local database and external platforms like dev.to. As of version 0.5+, the importer supports **bidirectional sync**, making your local database the source of truth.
+
+### ⚠️ Breaking Change (v0.5+)
+
+**Default behavior has changed from `remote-wins` to `local-wins`.**
+
+- **Old behavior (v0.4)**: Import from remote, replacing all local data
+- **New behavior (v0.5+)**: Bidirectional sync - push local edits to remote and pull new remote posts
+
+To maintain the old behavior, explicitly use `--sync-mode remote-wins`.
+
+### Sync Modes
+
+The importer supports three sync modes:
+
+#### 1. `local-wins` (Default - Bidirectional)
+
+Your local database is the source of truth. The importer will:
+- ✅ Import new posts from remote (create locally)
+- ✅ Push local edits to remote (update remote)
+- ✅ Create remote posts for local-only posts
+- ⚠️ Requires API key for pushing changes
+
+```bash
+# Default behavior (bidirectional sync)
+./import --source devto --username myuser --user-id <uuid> --api-key <key>
+
+# Explicit (same as above)
+./import --source devto --username myuser --user-id <uuid> --sync-mode local-wins --api-key <key>
+```
+
+#### 2. `remote-wins` (Old Default - Import Only)
+
+Remote platform is the source of truth. The importer will:
+- ✅ Import all posts from remote
+- ✅ Update existing local posts with remote content
+- ❌ Does NOT push local changes back
+- ℹ️ No API key required
+
+```bash
+# Import only, replace local with remote (old behavior)
+./import --source devto --username myuser --user-id <uuid> --sync-mode remote-wins
+```
+
+#### 3. `import-only` (Pull New Only)
+
+Only imports new posts, preserves existing:
+- ✅ Import posts that don't exist locally
+- ✅ Skip posts that already exist
+- ❌ Does NOT update existing posts
+- ❌ Does NOT push local changes
+- ℹ️ No API key required
+
+```bash
+# Import new posts only, skip existing
+./import --source devto --username myuser --user-id <uuid> --sync-mode import-only
+```
+
+### API Key Setup
+
+For bidirectional sync (`local-wins` mode), you need a dev.to API key to push changes:
+
+1. Visit https://dev.to/settings/extensions
+2. Generate an API key
+3. Provide via flag or environment variable:
+
+```bash
+# Option 1: CLI flag
+./import --source devto --username myuser --user-id <uuid> --api-key YOUR_API_KEY
+
+# Option 2: Environment variable (recommended)
+export DEVTO_API_KEY=YOUR_API_KEY
+./import --source devto --username myuser --user-id <uuid>
+```
+
+⚠️ **Security**: Never commit API keys to version control. Always use environment variables.
+
+### Usage Examples
+
+#### First-time import (bidirectional sync)
+```bash
+# Import all posts from dev.to and set up bidirectional sync
+export DEVTO_API_KEY=your_key_here
+./import --source devto --username yourname --user-id <uuid>
+```
+
+#### Edit locally, then sync back to dev.to
+```bash
+# 1. Edit a post locally via API
+curl -X PUT http://localhost:3000/api/posts/<id> \
+  -H "Authorization: Bearer <token>" \
+  -d '{"translations": {"en": {"title": "Updated Title"}}}'
+
+# 2. Sync changes back to dev.to
+./import --source devto --username yourname --user-id <uuid>
+# Your local edits are now pushed to dev.to
+```
+
+#### Create local post and publish to dev.to
+```bash
+# 1. Create post locally
+curl -X POST http://localhost:3000/api/posts \
+  -H "Authorization: Bearer <token>" \
+  -d '{
+    "slug": "new-post",
+    "status": "published",
+    "translations": {"en": {"title": "New Post", "content": "..."}}
+  }'
+
+# 2. Sync to create on dev.to
+./import --source devto --username yourname --user-id <uuid>
+# New post is created on dev.to
+```
+
+#### Reset local to match dev.to exactly
+```bash
+# Use remote-wins mode to replace all local with remote
+./import --source devto --username yourname --user-id <uuid> --sync-mode remote-wins
+```
+
+#### Import specific article
+```bash
+# By URL
+./import --source devto --url https://dev.to/username/article-slug-123 --user-id <uuid>
+
+# By ID
+./import --source devto --id 123456 --user-id <uuid>
+```
+
+#### Import with comments
+```bash
+./import --source devto --username yourname --user-id <uuid> --import-comments
+```
+
+#### Dry run (preview changes)
+```bash
+# See what would be synced without making changes
+./import --source devto --username yourname --user-id <uuid> --dry-run
+```
+
+### CLI Flags Reference
+
+| Flag | Description | Required | Default |
+|------|-------------|----------|---------|
+| `--source` | Import engine to use (currently: `devto`) | No | `devto` |
+| `--username` | Username to import from | Yes* | - |
+| `--url` | Specific article URL to import | Yes* | - |
+| `--id` | Specific article ID to import | Yes* | - |
+| `--user-id` | User ID to assign posts to | Yes | - |
+| `--sync-mode` | Sync mode: `local-wins`, `remote-wins`, `import-only` | No | `local-wins` |
+| `--api-key` | API key for remote platform (or use `DEVTO_API_KEY` env) | No** | - |
+| `--import-comments` | Import comments along with posts | No | `false` |
+| `--dry-run` | Preview import without saving | No | `false` |
+| `--truncate` | Delete all posts before importing | No | `false` |
+| `--list-engines` | List available import engines | No | - |
+
+\* One of `--username`, `--url`, or `--id` must be provided
+** Required for `local-wins` mode (bidirectional sync)
+
+### Migration Guide (v0.4 → v0.5)
+
+If you're upgrading from v0.4 and want to maintain the old import-only behavior:
+
+**Before (v0.4):**
+```bash
+./import --source devto --username myuser --user-id <uuid>
+```
+
+**After (v0.5+) - Option 1: Use new bidirectional sync**
+```bash
+# Get API key from https://dev.to/settings/extensions
+export DEVTO_API_KEY=your_key
+./import --source devto --username myuser --user-id <uuid>
+```
+
+**After (v0.5+) - Option 2: Keep old behavior**
+```bash
+./import --source devto --username myuser --user-id <uuid> --sync-mode remote-wins
+```
+
+### Supported Platforms
+
+- ✅ **dev.to** - Full bidirectional sync support
+- 🔜 Medium (planned)
+- 🔜 HashNode (planned)
+
 ## Database Schema
 
 ### Posts
@@ -245,9 +434,11 @@ Authorization: Bearer <token>
 - `user_id` (UUID, FK → users)
 - `slug` (TEXT, unique)
 - `status` (ENUM: 'draft', 'published')
+- `remote_source_id` (VARCHAR, nullable) - External platform article ID
+- `remote_source` (VARCHAR, nullable) - External platform name (e.g., 'devto')
 - `published_at`, `created_at`, `updated_at` (TIMESTAMP)
 
-**Note**: Titles and content stored in `translatable` table.
+**Note**: Titles and content stored in `translatable` table. Remote source fields track bidirectional sync with external platforms.
 
 ### Comments
 - `id` (UUID, PK)
@@ -300,6 +491,13 @@ gorest-blog/
 ├── resources.go           # CRUD handlers
 ├── translation_*.go       # Multi-language support
 ├── metrics_*.go           # Metrics tracking
+├── importer_service.go    # Bidirectional sync service
+├── importer/              # Import engines
+│   ├── cli/               # CLI command
+│   ├── engines/           # Platform-specific importers
+│   │   └── devto/         # dev.to API client
+│   ├── types.go           # Sync types and modes
+│   └── service.go         # Import interface
 ├── migrations/            # Database migrations
 └── types/                 # Custom types (PostStatus)
 ```
@@ -322,6 +520,25 @@ go test ./...
 **Translation Missing**: Empty translations in response
 - Ensure `translatable` plugin is enabled
 - Verify translations were created with POST request
+
+**Importer Error**: `API key required for pushing changes`
+- Set API key: `export DEVTO_API_KEY=your_key` or use `--api-key` flag
+- API key only needed for `local-wins` mode (bidirectional sync)
+- For import-only, use `--sync-mode remote-wins` or `--sync-mode import-only`
+
+**Importer Error**: `user_id does not exist`
+- Ensure the user ID exists in the database
+- Create user via auth plugin or API first
+
+**Sync Conflict**: Local changes overwritten
+- Default mode is `local-wins` - local changes push to remote
+- To pull from remote instead, use `--sync-mode remote-wins`
+- Use `--dry-run` first to preview what will happen
+
+**Importer Error**: `failed to create remote post`
+- Check API key is valid (regenerate at https://dev.to/settings/extensions)
+- Ensure you have write permissions on the external platform
+- Check rate limits (dev.to: 10 requests per 30 seconds)
 
 ## License
 

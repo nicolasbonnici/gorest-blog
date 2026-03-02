@@ -73,6 +73,8 @@ func Run(args []string) int {
 	dryRun := fs.Bool("dry-run", false, "Preview import without saving")
 	importComments := fs.Bool("import-comments", false, "Import comments along with posts")
 	listEngines := fs.Bool("list-engines", false, "List available engines")
+	syncMode := fs.String("sync-mode", "local-wins", "Sync mode: local-wins (bidirectional), remote-wins (import only), import-only (new posts only)")
+	apiKey := fs.String("api-key", "", "API key for remote source (required for pushing changes). Can also use DEVTO_API_KEY env var")
 
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing flags: %v\n", err)
@@ -101,8 +103,8 @@ func Run(args []string) int {
 		return 1
 	}
 
-	opts := buildImportOptions(*source, *userID, *username, *articleURL, *articleID, *truncate, *dryRun, *importComments)
-	printImportMode(*dryRun, *truncate)
+	opts := buildImportOptions(*source, *userID, *username, *articleURL, *articleID, *truncate, *dryRun, *importComments, *syncMode, *apiKey)
+	printImportMode(*dryRun, *truncate, opts.SyncMode)
 
 	result, err := service.Import(ctx, opts)
 	if err != nil {
@@ -170,7 +172,12 @@ func createImporterService(db database.Database) (importer.ImportService, error)
 	return service, nil
 }
 
-func buildImportOptions(source, userID, username, articleURL, articleID string, truncate, dryRun, importComments bool) importer.ImportOptions {
+func buildImportOptions(source, userID, username, articleURL, articleID string, truncate, dryRun, importComments bool, syncMode, apiKey string) importer.ImportOptions {
+	actualAPIKey := apiKey
+	if actualAPIKey == "" {
+		actualAPIKey = os.Getenv("DEVTO_API_KEY")
+	}
+
 	return importer.ImportOptions{
 		Source:         source,
 		UserID:         userID,
@@ -180,14 +187,30 @@ func buildImportOptions(source, userID, username, articleURL, articleID string, 
 		Truncate:       truncate,
 		DryRun:         dryRun,
 		ImportComments: importComments,
+		SyncMode:       importer.SyncMode(syncMode),
+		APIKey:         actualAPIKey,
 	}
 }
 
-func printImportMode(dryRun, truncate bool) {
+func printImportMode(dryRun, truncate bool, syncMode importer.SyncMode) {
 	if dryRun {
 		fmt.Println("Running in DRY-RUN mode - no changes will be saved")
 	} else if truncate {
 		fmt.Println("WARNING: All existing posts will be deleted before importing")
+	}
+
+	fmt.Printf("Sync mode: %s\n", syncMode)
+	switch syncMode {
+	case importer.SyncModeLocalWins:
+		fmt.Println("  - Will import new remote posts")
+		fmt.Println("  - Will push local edits to remote")
+		fmt.Println("  - Will create remote posts for local-only posts")
+	case importer.SyncModeRemoteWins:
+		fmt.Println("  - Will import/update from remote")
+		fmt.Println("  - Local changes will be overwritten")
+	case importer.SyncModeImportOnly:
+		fmt.Println("  - Will only import new posts")
+		fmt.Println("  - Existing posts will be skipped")
 	}
 }
 

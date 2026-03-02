@@ -99,6 +99,48 @@ func (e *Engine) FetchByURL(ctx context.Context, url string) (*engines.Post, err
 	return &post, nil
 }
 
+func (e *Engine) CreatePost(ctx context.Context, apiKey string, post engines.Post) (string, error) {
+	if apiKey == "" {
+		return "", fmt.Errorf("API key is required for creating posts on dev.to")
+	}
+
+	payload := CreateArticlePayload{
+		Title:        post.Title,
+		BodyMarkdown: post.Content,
+		Published:    post.PublishedAt != "",
+	}
+
+	articleID, err := e.client.CreateArticle(ctx, apiKey, payload)
+	if err != nil {
+		return "", fmt.Errorf("failed to create article on dev.to: %w", err)
+	}
+
+	return fmt.Sprintf("%d", articleID), nil
+}
+
+func (e *Engine) UpdatePost(ctx context.Context, apiKey string, remoteID string, post engines.Post) error {
+	if apiKey == "" {
+		return fmt.Errorf("API key is required for updating posts on dev.to")
+	}
+
+	articleID, err := strconv.Atoi(remoteID)
+	if err != nil {
+		return fmt.Errorf("invalid dev.to article ID %s: %w", remoteID, err)
+	}
+
+	payload := CreateArticlePayload{
+		Title:        post.Title,
+		BodyMarkdown: post.Content,
+		Published:    post.PublishedAt != "",
+	}
+
+	if err := e.client.UpdateArticle(ctx, apiKey, articleID, payload); err != nil {
+		return fmt.Errorf("failed to update article %s on dev.to: %w", remoteID, err)
+	}
+
+	return nil
+}
+
 func init() {
 	engines.Register(NewEngine())
 }

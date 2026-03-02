@@ -207,6 +207,58 @@ func (c *Client) GetCommentsByArticleID(ctx context.Context, articleID int) ([]D
 	return comments, nil
 }
 
+type CreateArticleRequest struct {
+	Article CreateArticlePayload `json:"article"`
+}
+
+type CreateArticlePayload struct {
+	Title        string   `json:"title"`
+	BodyMarkdown string   `json:"body_markdown"`
+	Published    bool     `json:"published"`
+	Tags         []string `json:"tags,omitempty"`
+	CanonicalURL string   `json:"canonical_url,omitempty"`
+}
+
+type CreateArticleResponse struct {
+	ID int `json:"id"`
+}
+
+func (c *Client) CreateArticle(ctx context.Context, apiKey string, payload CreateArticlePayload) (int, error) {
+	if apiKey == "" {
+		return 0, fmt.Errorf("API key is required for creating articles")
+	}
+
+	endpoint := fmt.Sprintf("%s/articles", c.baseURL)
+	reqBody := CreateArticleRequest{Article: payload}
+
+	var response CreateArticleResponse
+	if err := c.doRequestWithBody(ctx, "POST", endpoint, apiKey, reqBody, &response); err != nil {
+		return 0, fmt.Errorf("failed to create article: %w", err)
+	}
+
+	return response.ID, nil
+}
+
+func (c *Client) UpdateArticle(ctx context.Context, apiKey string, articleID int, payload CreateArticlePayload) error {
+	if apiKey == "" {
+		return fmt.Errorf("API key is required for updating articles")
+	}
+
+	if articleID <= 0 {
+		return fmt.Errorf("invalid article ID: %d", articleID)
+	}
+
+	endpoint := fmt.Sprintf("%s/articles/%d", c.baseURL, articleID)
+	reqBody := CreateArticleRequest{Article: payload}
+
+	var response DevToArticle
+	if err := c.doRequestWithBody(ctx, "PUT", endpoint, apiKey, reqBody, &response); err != nil {
+		return fmt.Errorf("failed to update article %d: %w", articleID, err)
+	}
+
+	return nil
+}
+
 func (c *Client) doRequest(ctx context.Context, method, url string, result interface{}) error {
 	req, err := http.NewRequestWithContext(ctx, method, url, nil)
 	if err != nil {
@@ -223,6 +275,45 @@ func (c *Client) doRequest(ctx context.Context, method, url string, result inter
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if err := json.Unmarshal(body, result); err != nil {
+		return fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return nil
+}
+
+func (c *Client) doRequestWithBody(ctx context.Context, method, url, apiKey string, payload interface{}, result interface{}) error {
+	bodyBytes, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, url, strings.NewReader(string(bodyBytes)))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "GoREST-Blog-Importer/1.0")
+	req.Header.Set("api-key", apiKey)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
 	}

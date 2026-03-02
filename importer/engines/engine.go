@@ -19,4 +19,10 @@ type Engine interface {
 
 	// FetchByURL fetches a single post from its URL on the source platform
 	FetchByURL(ctx context.Context, url string) (*Post, error)
+
+	// CreatePost creates a new post on the remote platform
+	CreatePost(ctx context.Context, apiKey string, post Post) (remoteID string, err error)
+
+	// UpdatePost updates an existing post on the remote platform
+	UpdatePost(ctx context.Context, apiKey string, remoteID string, post Post) error
 }
