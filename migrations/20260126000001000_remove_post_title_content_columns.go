@@ -17,29 +17,47 @@ func init() {
 }
 
 func removePostTitleContentColumnsUp(ctx context.Context, db database.Database) error {
-	// Check if title and content columns exist before migrating data
-	hasColumns := false
-	if db.DriverName() == "postgres" {
+	hasColumns := checkPostColumnsExist(ctx, db)
+
+	if hasColumns {
+		if err := migratePostDataToTranslations(ctx, db); err != nil {
+			return err
+		}
+	}
+
+	if err := dropPostTitleContentColumns(ctx, db); err != nil {
+		return err
+	}
+
+	if db.DriverName() == "sqlite" && hasColumns {
+		if err := recreateSQLitePostTable(ctx, db); err != nil {
+			return err
+		}
+	}
+
+	if db.DriverName() == "sqlite" {
+		if err := recreateSQLitePostIndexes(ctx, db); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func checkPostColumnsExist(ctx context.Context, db database.Database) bool {
+	switch db.DriverName() {
+	case "postgres", "mysql":
 		var exists bool
-		if err := db.QueryRow(ctx, `
+		query := `
 			SELECT EXISTS (
 				SELECT 1 FROM information_schema.columns
 				WHERE table_name='post' AND column_name='title'
 			)
-		`).Scan(&exists); err == nil && exists {
-			hasColumns = true
+		`
+		if err := db.QueryRow(ctx, query).Scan(&exists); err == nil && exists {
+			return true
 		}
-	} else if db.DriverName() == "mysql" {
-		var exists bool
-		if err := db.QueryRow(ctx, `
-			SELECT EXISTS (
-				SELECT 1 FROM information_schema.columns
-				WHERE table_name='post' AND column_name='title'
-			)
-		`).Scan(&exists); err == nil && exists {
-			hasColumns = true
-		}
-	} else if db.DriverName() == "sqlite" {
+	case "sqlite":
 		rows, err := db.Query(ctx, `PRAGMA table_info(post)`)
 		if err == nil {
 			defer func() { _ = rows.Close() }()
@@ -50,81 +68,76 @@ func removePostTitleContentColumnsUp(ctx context.Context, db database.Database) 
 				var notnull int
 				var dfltValue interface{}
 				var pk int
-				if err := rows.Scan(&cid, &name, &typ, &notnull, &dfltValue, &pk); err == nil {
-					if name == "title" {
-						hasColumns = true
-						break
-					}
+				if err := rows.Scan(&cid, &name, &typ, &notnull, &dfltValue, &pk); err == nil && name == "title" {
+					return true
 				}
 			}
 		}
 	}
+	return false
+}
 
-	// Only migrate data if columns exist
-	if hasColumns {
-		if err := migrations.SQL(ctx, db, migrations.DialectSQL{
-			Postgres: `
-				INSERT INTO translations (id, user_id, translatable_id, translatable, locale, content, created_at)
-				SELECT
-					gen_random_uuid(),
-					user_id,
-					id,
-					'post',
-					'en',
-					json_build_object('title', title, 'content', content),
-					created_at
-				FROM post
-				WHERE NOT EXISTS (
-					SELECT 1 FROM translations
-					WHERE translatable_id = post.id
-					AND translatable = 'post'
-					AND locale = 'en'
-				)
-			`,
-			MySQL: `
-				INSERT INTO translations (id, user_id, translatable_id, translatable, locale, content, created_at)
-				SELECT
-					UUID(),
-					user_id,
-					id,
-					'post',
-					'en',
-					JSON_OBJECT('title', title, 'content', content),
-					created_at
-				FROM post
-				WHERE NOT EXISTS (
-					SELECT 1 FROM translations
-					WHERE translatable_id = post.id
-					AND translatable = 'post'
-					AND locale = 'en'
-				)
-			`,
-			SQLite: `
-				INSERT INTO translations (id, user_id, translatable_id, translatable, locale, content, created_at)
-				SELECT
-					lower(hex(randomblob(16))),
-					user_id,
-					id,
-					'post',
-					'en',
-					json_object('title', title, 'content', content),
-					created_at
-				FROM post
-				WHERE NOT EXISTS (
-					SELECT 1 FROM translations
-					WHERE translatable_id = post.id
-					AND translatable = 'post'
-					AND locale = 'en'
-				)
-			`,
-		}); err != nil {
-			return err
-		}
-	}
+func migratePostDataToTranslations(ctx context.Context, db database.Database) error {
+	return migrations.SQL(ctx, db, migrations.DialectSQL{
+		Postgres: `
+			INSERT INTO translations (id, user_id, translatable_id, translatable, locale, content, created_at)
+			SELECT
+				gen_random_uuid(),
+				user_id,
+				id,
+				'post',
+				'en',
+				json_build_object('title', title, 'content', content),
+				created_at
+			FROM post
+			WHERE NOT EXISTS (
+				SELECT 1 FROM translations
+				WHERE translatable_id = post.id
+				AND translatable = 'post'
+				AND locale = 'en'
+			)
+		`,
+		MySQL: `
+			INSERT INTO translations (id, user_id, translatable_id, translatable, locale, content, created_at)
+			SELECT
+				UUID(),
+				user_id,
+				id,
+				'post',
+				'en',
+				JSON_OBJECT('title', title, 'content', content),
+				created_at
+			FROM post
+			WHERE NOT EXISTS (
+				SELECT 1 FROM translations
+				WHERE translatable_id = post.id
+				AND translatable = 'post'
+				AND locale = 'en'
+			)
+		`,
+		SQLite: `
+			INSERT INTO translations (id, user_id, translatable_id, translatable, locale, content, created_at)
+			SELECT
+				lower(hex(randomblob(16))),
+				user_id,
+				id,
+				'post',
+				'en',
+				json_object('title', title, 'content', content),
+				created_at
+			FROM post
+			WHERE NOT EXISTS (
+				SELECT 1 FROM translations
+				WHERE translatable_id = post.id
+				AND translatable = 'post'
+				AND locale = 'en'
+			)
+		`,
+	})
+}
 
-	// Drop title and content columns (if they exist)
-	// Note: SQLite table recreation is handled separately below
-	if err := migrations.SQL(ctx, db, migrations.DialectSQL{
+func dropPostTitleContentColumns(ctx context.Context, db database.Database) error {
+	return migrations.SQL(ctx, db, migrations.DialectSQL{
 		Postgres: `ALTER TABLE post DROP COLUMN IF EXISTS title, DROP COLUMN IF EXISTS content`,
 		MySQL: `
 			ALTER TABLE post
@@ -132,52 +145,41 @@ func removePostTitleContentColumnsUp(ctx context.Context, db database.Database) 
 			DROP COLUMN IF EXISTS content
 		`,
 		SQLite: `SELECT 1`,
-	}); err != nil {
-		return err
-	}
+	})
+}
 
-	// Handle SQLite table recreation if columns exist
-	if db.DriverName() == "sqlite" && hasColumns {
-		if err := migrations.SQL(ctx, db, migrations.DialectSQL{
-			SQLite: `
-				-- SQLite doesn't support DROP COLUMN before version 3.35.0
-				-- Create new table without title and content
-				CREATE TABLE post_new (
-					id TEXT PRIMARY KEY,
-					user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
-					slug TEXT NOT NULL,
-					status TEXT NOT NULL DEFAULT 'drafted' CHECK(status IN ('drafted', 'published')),
-					published_at TEXT,
-					updated_at TEXT,
-					created_at TEXT NOT NULL DEFAULT (datetime('now'))
-				);
+func recreateSQLitePostTable(ctx context.Context, db database.Database) error {
+	return migrations.SQL(ctx, db, migrations.DialectSQL{
+		SQLite: `
+			CREATE TABLE post_new (
+				id TEXT PRIMARY KEY,
+				user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+				slug TEXT NOT NULL,
+				status TEXT NOT NULL DEFAULT 'drafted' CHECK(status IN ('drafted', 'published')),
+				published_at TEXT,
+				updated_at TEXT,
+				created_at TEXT NOT NULL DEFAULT (datetime('now'))
+			);
 
-				-- Copy data
-				INSERT INTO post_new (id, user_id, slug, status, published_at, updated_at, created_at)
-				SELECT id, user_id, slug, status, published_at, updated_at, created_at
-				FROM post;
+			INSERT INTO post_new (id, user_id, slug, status, published_at, updated_at, created_at)
+			SELECT id, user_id, slug, status, published_at, updated_at, created_at
+			FROM post;
 
-				-- Drop old table and rename new one
-				DROP TABLE post;
-				ALTER TABLE post_new RENAME TO post;
-			`,
-		}); err != nil {
+			DROP TABLE post;
+			ALTER TABLE post_new RENAME TO post;
+		`,
+	})
+}
+
+func recreateSQLitePostIndexes(ctx context.Context, db database.Database) error {
+	indexes := []string{"idx_post_status", "idx_post_fk_user", "idx_post_slug"}
+	columns := []string{"status", "user_id", "slug"}
+
+	for i, idx := range indexes {
+		if err := migrations.CreateIndex(ctx, db, idx, "post", columns[i]); err != nil {
 			return err
 		}
 	}
-
-	if db.DriverName() == "sqlite" {
-		if err := migrations.CreateIndex(ctx, db, "idx_post_status", "post", "status"); err != nil {
-			return err
-		}
-		if err := migrations.CreateIndex(ctx, db, "idx_post_fk_user", "post", "user_id"); err != nil {
-			return err
-		}
-		if err := migrations.CreateIndex(ctx, db, "idx_post_slug", "post", "slug"); err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 

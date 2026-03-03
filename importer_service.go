@@ -126,6 +126,17 @@ func (s *ImporterService) syncLocalWins(ctx context.Context, localMap map[string
 
 	current := 0
 
+	current = s.syncRemoteToLocal(ctx, remoteMap, localMap, opts, result, current)
+	s.syncLocalToRemote(ctx, localMap, remoteMap, engine, opts, result, &current)
+
+	if s.reporter != nil {
+		s.reporter.Finish(result.String())
+	}
+
+	return result
+}
+
+func (s *ImporterService) syncRemoteToLocal(ctx context.Context, remoteMap map[string]importer.Post, localMap map[string]*Post, opts importer.ImportOptions, result *importer.SyncResult, current int) int {
 	for slug, remotePost := range remoteMap {
 		current++
 		if s.reporter != nil {
@@ -144,65 +155,73 @@ func (s *ImporterService) syncLocalWins(ctx context.Context, localMap map[string
 			}
 		}
 	}
+	return current
+}
 
+func (s *ImporterService) syncLocalToRemote(ctx context.Context, localMap map[string]*Post, remoteMap map[string]importer.Post, engine engines.Engine, opts importer.ImportOptions, result *importer.SyncResult, current *int) {
 	for slug, localPost := range localMap {
-		current++
+		*current++
 		if s.reporter != nil {
-			s.reporter.Update(current, fmt.Sprintf("Syncing: %s", slug))
+			s.reporter.Update(*current, fmt.Sprintf("Syncing: %s", slug))
 		}
 
 		remotePost, existsRemote := remoteMap[slug]
 
 		if !existsRemote {
-			if !opts.DryRun {
-				if err := s.pushPostToRemote(ctx, engine, localPost, opts, true); err != nil {
-					result.Errors = append(result.Errors, importer.SyncError{
-						PostSlug:  slug,
-						Operation: "export-create",
-						Error:     err,
-					})
-				} else {
-					result.RemoteCreated++
-				}
-			} else {
-				result.RemoteCreated++
-			}
+			s.createRemotePost(ctx, engine, localPost, slug, opts, result)
 		} else {
-			needsUpdate, err := s.hasLocalChanges(ctx, localPost, remotePost)
-			if err != nil {
-				result.Errors = append(result.Errors, importer.SyncError{
-					PostSlug:  slug,
-					Operation: "check-changes",
-					Error:     err,
-				})
-				continue
-			}
-
-			if needsUpdate {
-				if !opts.DryRun {
-					if err := s.pushPostToRemote(ctx, engine, localPost, opts, false); err != nil {
-						result.Errors = append(result.Errors, importer.SyncError{
-							PostSlug:  slug,
-							Operation: "export-update",
-							Error:     err,
-						})
-					} else {
-						result.RemoteUpdated++
-					}
-				} else {
-					result.RemoteUpdated++
-				}
-			} else {
-				result.Skipped++
-			}
+			s.updateRemotePost(ctx, engine, localPost, remotePost, slug, opts, result)
 		}
 	}
+}
 
-	if s.reporter != nil {
-		s.reporter.Finish(result.String())
+func (s *ImporterService) createRemotePost(ctx context.Context, engine engines.Engine, localPost *Post, slug string, opts importer.ImportOptions, result *importer.SyncResult) {
+	if opts.DryRun {
+		result.RemoteCreated++
+		return
 	}
 
-	return result
+	if err := s.pushPostToRemote(ctx, engine, localPost, opts, true); err != nil {
+		result.Errors = append(result.Errors, importer.SyncError{
+			PostSlug:  slug,
+			Operation: "export-create",
+			Error:     err,
+		})
+	} else {
+		result.RemoteCreated++
+	}
+}
+
+func (s *ImporterService) updateRemotePost(ctx context.Context, engine engines.Engine, localPost *Post, remotePost importer.Post, slug string, opts importer.ImportOptions, result *importer.SyncResult) {
+	needsUpdate, err := s.hasLocalChanges(ctx, localPost, remotePost)
+	if err != nil {
+		result.Errors = append(result.Errors, importer.SyncError{
+			PostSlug:  slug,
+			Operation: "check-changes",
+			Error:     err,
+		})
+		return
+	}
+
+	if !needsUpdate {
+		result.Skipped++
+		return
+	}
+
+	if opts.DryRun {
+		result.RemoteUpdated++
+		return
+	}
+
+	if err := s.pushPostToRemote(ctx, engine, localPost, opts, false); err != nil {
+		result.Errors = append(result.Errors, importer.SyncError{
+			PostSlug:  slug,
+			Operation: "export-update",
+			Error:     err,
+		})
+	} else {
+		result.RemoteUpdated++
+	}
 }
 
 func (s *ImporterService) syncRemoteWins(ctx context.Context, localMap map[string]*Post, remoteMap map[string]importer.Post, opts importer.ImportOptions) *importer.SyncResult {

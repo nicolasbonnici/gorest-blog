@@ -107,10 +107,10 @@ audit: ## Run all Go Report Card quality checks (gofmt, vet, staticcheck, etc.)
 	(echo "⚠️  errcheck failed (known issue with go1.25.1 - will be fixed in CI)" && exit 0)
 	@echo "✓ errcheck passed (or skipped)"
 	@echo ""
-	@echo "[7/7] Running gocyclo (threshold: 45)..."
-	@gocyclo_output=$$(gocyclo -over 45 . | grep -v 'vendor/' | grep -v 'generated/' | grep -v '_test.go' || true); \
+	@echo "[7/7] Running gocyclo (threshold: 15)..."
+	@gocyclo_output=$$(gocyclo -over 15 . | grep -v 'vendor/' | grep -v 'generated/' | grep -v '_test.go' || true); \
 	if [ -n "$$gocyclo_output" ]; then \
-		echo "❌ Functions with cyclomatic complexity > 45:"; \
+		echo "❌ Functions with cyclomatic complexity > 15:"; \
 		echo "$$gocyclo_output"; \
 		exit 1; \
 	fi
@@ -127,7 +127,7 @@ audit: ## Run all Go Report Card quality checks (gofmt, vet, staticcheck, etc.)
 	@echo "  ✓ ineffassign (ineffectual assignments)"
 	@echo "  ✓ misspell (spelling)"
 	@echo "  ✓ errcheck (error handling)"
-	@echo "  ✓ gocyclo (complexity ≤ 45)"
+	@echo "  ✓ gocyclo (complexity ≤ 15)"
 	@echo ""
 
 build: ## Build verification
