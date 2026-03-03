@@ -1,60 +1,11 @@
 package blog
 
 import (
-	"context"
 	"testing"
 
 	"github.com/nicolasbonnici/gorest-blog/importer"
-	"github.com/nicolasbonnici/gorest-blog/importer/engines"
 	"github.com/nicolasbonnici/gorest-blog/types"
 )
-
-type mockEngine struct {
-	name         string
-	createCalled bool
-	updateCalled bool
-	createError  error
-	updateError  error
-	createdPosts []engines.Post
-	updatedPosts map[string]engines.Post
-}
-
-func (m *mockEngine) Name() string {
-	return m.name
-}
-
-func (m *mockEngine) FetchByUsername(ctx context.Context, username string) ([]engines.Post, error) {
-	return []engines.Post{}, nil
-}
-
-func (m *mockEngine) FetchByID(ctx context.Context, id string) (*engines.Post, error) {
-	return nil, nil
-}
-
-func (m *mockEngine) FetchByURL(ctx context.Context, url string) (*engines.Post, error) {
-	return nil, nil
-}
-
-func (m *mockEngine) CreatePost(ctx context.Context, apiKey string, post engines.Post) (string, error) {
-	m.createCalled = true
-	if m.createError != nil {
-		return "", m.createError
-	}
-	m.createdPosts = append(m.createdPosts, post)
-	return "remote-123", nil
-}
-
-func (m *mockEngine) UpdatePost(ctx context.Context, apiKey string, remoteID string, post engines.Post) error {
-	m.updateCalled = true
-	if m.updateError != nil {
-		return m.updateError
-	}
-	if m.updatedPosts == nil {
-		m.updatedPosts = make(map[string]engines.Post)
-	}
-	m.updatedPosts[remoteID] = post
-	return nil
-}
 
 func TestSyncMode_IsValid(t *testing.T) {
 	tests := []struct {
