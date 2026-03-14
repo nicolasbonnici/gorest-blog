@@ -169,9 +169,18 @@ func (r *PostResource) Create(c *fiber.Ctx) error {
 
 	item := r.buildPostFromRequest(c, &req)
 
+	// Clear read-only fields before RBAC validation
+	tempId := item.Id
+	item.Id = ""
+	item.RemoteSourceID = nil
+	item.RemoteSource = nil
+
 	if err := r.Voter.ValidateWrite(ctx, &item); err != nil {
 		return c.Status(403).JSON(fiber.Map{"error": err.Error()})
 	}
+
+	// Restore ID for creation
+	item.Id = tempId
 
 	if err := r.createPostWithDependencies(ctx, &item, req.Translations); err != nil {
 		return err
@@ -312,6 +321,8 @@ func (r *PostResource) validateAndApplyUpdates(ctx context.Context, existing *Po
 	updateItem.CreatedAt = nil
 	updateItem.UpdatedAt = nil
 	updateItem.Metrics = nil
+	updateItem.RemoteSourceID = nil
+	updateItem.RemoteSource = nil
 
 	if err := r.Voter.ValidateWrite(ctx, &updateItem); err != nil {
 		return fiber.NewError(403, err.Error())
