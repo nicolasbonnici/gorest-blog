@@ -1,10 +1,11 @@
-package blog
+package services
 
 import (
 	"context"
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/nicolasbonnici/gorest-blog/models"
 	"github.com/nicolasbonnici/gorest/database"
 	"github.com/nicolasbonnici/gorest/query"
 )
@@ -48,7 +49,7 @@ func (s *MetricsService) DecrementComments(ctx context.Context, postID string) e
 	return s.decrementMetric(ctx, postID, MetricNameComments)
 }
 
-func (s *MetricsService) GetMetrics(ctx context.Context, postID string) (*PostMetrics, error) {
+func (s *MetricsService) GetMetrics(ctx context.Context, postID string) (*models.PostMetrics, error) {
 	postUUID, err := uuid.Parse(postID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid post ID: %w", err)
@@ -74,7 +75,7 @@ func (s *MetricsService) GetMetrics(ctx context.Context, postID string) (*PostMe
 	}
 	defer func() { _ = rows.Close() }()
 
-	metrics := &PostMetrics{
+	metrics := &models.PostMetrics{
 		PostID:   postID,
 		Views:    0,
 		Likes:    0,

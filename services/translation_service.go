@@ -1,4 +1,4 @@
-package blog
+package services
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/nicolasbonnici/gorest-blog/models"
 	"github.com/nicolasbonnici/gorest-blog/types"
 	"github.com/nicolasbonnici/gorest/crud"
 	"github.com/nicolasbonnici/gorest/database"
@@ -33,7 +34,7 @@ func NewTranslationService(db database.Database) *TranslationService {
 }
 
 // CreateTranslations creates multiple translations for a post in a single operation
-func (s *TranslationService) CreateTranslations(ctx context.Context, postID string, translations map[string]*PostTranslationContent, userID *uuid.UUID) error {
+func (s *TranslationService) CreateTranslations(ctx context.Context, postID string, translations map[string]*models.PostTranslationContent, userID *uuid.UUID) error {
 	postUUID, err := uuid.Parse(postID)
 	if err != nil {
 		return fmt.Errorf("invalid post ID: %w", err)
@@ -55,7 +56,7 @@ func (s *TranslationService) CreateTranslations(ctx context.Context, postID stri
 
 		translationContent.Sanitize()
 
-		jsonContent, err := translationContent.ToJSON()
+		jsonContent, err := ToJSON(translationContent)
 		if err != nil {
 			return fmt.Errorf("failed to serialize content for locale %s: %w", locale, err)
 		}
@@ -96,7 +97,7 @@ func (s *TranslationService) CreateTranslation(ctx context.Context, postID, loca
 		return errors.New("post not found")
 	}
 
-	translationContent := &PostTranslationContent{
+	translationContent := &models.PostTranslationContent{
 		Title:   title,
 		Content: content,
 	}
@@ -107,7 +108,7 @@ func (s *TranslationService) CreateTranslation(ctx context.Context, postID, loca
 
 	translationContent.Sanitize()
 
-	jsonContent, err := translationContent.ToJSON()
+	jsonContent, err := ToJSON(translationContent)
 	if err != nil {
 		return fmt.Errorf("failed to serialize content: %w", err)
 	}
@@ -133,7 +134,7 @@ func (s *TranslationService) CreateTranslation(ctx context.Context, postID, loca
 }
 
 // GetTranslation retrieves a specific translation for a post
-func (s *TranslationService) GetTranslation(ctx context.Context, postID, locale string) (*PostTranslationContent, error) {
+func (s *TranslationService) GetTranslation(ctx context.Context, postID, locale string) (*models.PostTranslationContent, error) {
 	postUUID, err := uuid.Parse(postID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid post ID: %w", err)
@@ -174,7 +175,7 @@ func (s *TranslationService) GetTranslation(ctx context.Context, postID, locale 
 }
 
 // ListTranslations retrieves all translations for a post
-func (s *TranslationService) ListTranslations(ctx context.Context, postID string) (map[string]*PostTranslationContent, error) {
+func (s *TranslationService) ListTranslations(ctx context.Context, postID string) (map[string]*models.PostTranslationContent, error) {
 	postUUID, err := uuid.Parse(postID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid post ID: %w", err)
@@ -200,7 +201,7 @@ func (s *TranslationService) ListTranslations(ctx context.Context, postID string
 	}
 	defer func() { _ = rows.Close() }()
 
-	translations := make(map[string]*PostTranslationContent)
+	translations := make(map[string]*models.PostTranslationContent)
 
 	for rows.Next() {
 		var locale, content string
@@ -234,7 +235,7 @@ func (s *TranslationService) UpdateTranslation(ctx context.Context, postID, loca
 		return errors.New("translation not found or access denied")
 	}
 
-	translationContent := &PostTranslationContent{
+	translationContent := &models.PostTranslationContent{
 		Title:   title,
 		Content: content,
 	}
@@ -245,7 +246,7 @@ func (s *TranslationService) UpdateTranslation(ctx context.Context, postID, loca
 
 	translationContent.Sanitize()
 
-	jsonContent, err := translationContent.ToJSON()
+	jsonContent, err := ToJSON(translationContent)
 	if err != nil {
 		return fmt.Errorf("failed to serialize content: %w", err)
 	}
@@ -394,7 +395,7 @@ func (s *TranslationService) translationExists(ctx context.Context, postID uuid.
 }
 
 type PostWithTranslationsResult struct {
-	Posts []*Post
+	Posts []*models.Post
 	Total *int
 }
 
@@ -415,7 +416,7 @@ func (s *TranslationService) LoadPostsWithTranslations(ctx context.Context, limi
 		return nil, err
 	}
 
-	posts := make([]*Post, 0, len(postOrder))
+	posts := make([]*models.Post, 0, len(postOrder))
 	for _, id := range postOrder {
 		posts = append(posts, postsMap[id])
 	}
@@ -450,8 +451,8 @@ type postRowData struct {
 	metricValue *int64
 }
 
-func (s *TranslationService) processRows(rows database.Rows) (map[string]*Post, []string, error) {
-	postsMap := make(map[string]*Post)
+func (s *TranslationService) processRows(rows database.Rows) (map[string]*models.Post, []string, error) {
+	postsMap := make(map[string]*models.Post)
 	var postOrder []string
 
 	for rows.Next() {
@@ -493,22 +494,22 @@ func (s *TranslationService) scanRow(rows database.Rows) (*postRowData, error) {
 	return &rowData, nil
 }
 
-func (s *TranslationService) ensurePostExists(postsMap map[string]*Post, postOrder *[]string, rowData *postRowData) *Post {
+func (s *TranslationService) ensurePostExists(postsMap map[string]*models.Post, postOrder *[]string, rowData *postRowData) *models.Post {
 	post, exists := postsMap[rowData.id]
 	if exists {
 		return post
 	}
 
-	post = &Post{
-		Id:           rowData.id,
-		UserId:       rowData.userID,
+	post = &models.Post{
+		ID:           rowData.id,
+		UserID:       rowData.userID,
 		Slug:         rowData.slug,
 		Status:       types.PostStatus(rowData.status),
 		PublishedAt:  s.parseTime(rowData.publishedAt),
 		UpdatedAt:    s.parseTime(rowData.updatedAt),
 		CreatedAt:    s.parseTime(rowData.createdAt),
-		Translations: make(map[string]*PostTranslationContent),
-		Metrics:      &PostMetrics{PostID: rowData.id, Views: 0, Likes: 0, Comments: 0},
+		Translations: make(map[string]*models.PostTranslationContent),
+		Metrics:      &models.PostMetrics{PostID: rowData.id, Views: 0, Likes: 0, Comments: 0},
 	}
 	postsMap[rowData.id] = post
 	*postOrder = append(*postOrder, rowData.id)
@@ -523,7 +524,7 @@ func (s *TranslationService) parseTime(val interface{}) *time.Time {
 	return t
 }
 
-func (s *TranslationService) addTranslationToPost(post *Post, rowData *postRowData) error {
+func (s *TranslationService) addTranslationToPost(post *models.Post, rowData *postRowData) error {
 	if rowData.locale == nil || rowData.content == nil {
 		return nil
 	}
@@ -536,7 +537,7 @@ func (s *TranslationService) addTranslationToPost(post *Post, rowData *postRowDa
 	return nil
 }
 
-func (s *TranslationService) addMetricToPost(post *Post, rowData *postRowData) {
+func (s *TranslationService) addMetricToPost(post *models.Post, rowData *postRowData) {
 	if rowData.metricName == nil || rowData.metricValue == nil || post.Metrics == nil {
 		return
 	}
