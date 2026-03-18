@@ -7,7 +7,7 @@ toolchain go1.26.0
 require (
 	github.com/gofiber/fiber/v2 v2.52.12
 	github.com/google/uuid v1.6.0
-	github.com/nicolasbonnici/gorest v0.4.12
+	github.com/nicolasbonnici/gorest v0.4.13
 	github.com/nicolasbonnici/gorest-auth v0.1.11
 	github.com/nicolasbonnici/gorest-rbac v0.1.5
 	github.com/schollz/progressbar/v3 v3.19.0
@@ -38,13 +38,12 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.69.0 // indirect
 	golang.org/x/crypto v0.49.0 // indirect
-	golang.org/x/exp v0.0.0-20260112195511-716be5621a96 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/term v0.41.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
-	modernc.org/libc v1.67.7 // indirect
+	modernc.org/libc v1.70.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
-	modernc.org/sqlite v1.46.1 // indirect
+	modernc.org/sqlite v1.47.0 // indirect
 )
