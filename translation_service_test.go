@@ -3,18 +3,21 @@ package blog
 import (
 	"strings"
 	"testing"
+
+	"github.com/nicolasbonnici/gorest-blog/models"
+	"github.com/nicolasbonnici/gorest-blog/services"
 )
 
 func TestPostTranslationContent_Validate(t *testing.T) {
 	tests := []struct {
 		name    string
-		content *PostTranslationContent
+		content *models.PostTranslationContent
 		wantErr bool
 		errMsg  string
 	}{
 		{
 			name: "valid content",
-			content: &PostTranslationContent{
+			content: &models.PostTranslationContent{
 				Title:   "Test Title",
 				Content: "Test Content",
 			},
@@ -22,7 +25,7 @@ func TestPostTranslationContent_Validate(t *testing.T) {
 		},
 		{
 			name: "empty title",
-			content: &PostTranslationContent{
+			content: &models.PostTranslationContent{
 				Title:   "",
 				Content: "Test Content",
 			},
@@ -31,7 +34,7 @@ func TestPostTranslationContent_Validate(t *testing.T) {
 		},
 		{
 			name: "whitespace only title",
-			content: &PostTranslationContent{
+			content: &models.PostTranslationContent{
 				Title:   "   ",
 				Content: "Test Content",
 			},
@@ -40,7 +43,7 @@ func TestPostTranslationContent_Validate(t *testing.T) {
 		},
 		{
 			name: "empty content",
-			content: &PostTranslationContent{
+			content: &models.PostTranslationContent{
 				Title:   "Test Title",
 				Content: "",
 			},
@@ -49,7 +52,7 @@ func TestPostTranslationContent_Validate(t *testing.T) {
 		},
 		{
 			name: "whitespace only content",
-			content: &PostTranslationContent{
+			content: &models.PostTranslationContent{
 				Title:   "Test Title",
 				Content: "   ",
 			},
@@ -58,7 +61,7 @@ func TestPostTranslationContent_Validate(t *testing.T) {
 		},
 		{
 			name: "title with leading/trailing spaces",
-			content: &PostTranslationContent{
+			content: &models.PostTranslationContent{
 				Title:   "  Test Title  ",
 				Content: "Test Content",
 			},
@@ -83,13 +86,13 @@ func TestPostTranslationContent_Validate(t *testing.T) {
 func TestPostTranslationContent_Sanitize(t *testing.T) {
 	tests := []struct {
 		name            string
-		input           *PostTranslationContent
+		input           *models.PostTranslationContent
 		expectedTitle   string
 		expectedContent string
 	}{
 		{
 			name: "sanitize XSS in title",
-			input: &PostTranslationContent{
+			input: &models.PostTranslationContent{
 				Title:   "<script>alert('xss')</script>",
 				Content: "Normal content",
 			},
@@ -98,7 +101,7 @@ func TestPostTranslationContent_Sanitize(t *testing.T) {
 		},
 		{
 			name: "sanitize XSS in content",
-			input: &PostTranslationContent{
+			input: &models.PostTranslationContent{
 				Title:   "Normal title",
 				Content: "<img src=x onerror=alert('xss')>",
 			},
@@ -107,7 +110,7 @@ func TestPostTranslationContent_Sanitize(t *testing.T) {
 		},
 		{
 			name: "sanitize HTML entities",
-			input: &PostTranslationContent{
+			input: &models.PostTranslationContent{
 				Title:   "Title & More",
 				Content: "Content with <b>bold</b> & entities",
 			},
@@ -116,7 +119,7 @@ func TestPostTranslationContent_Sanitize(t *testing.T) {
 		},
 		{
 			name: "normal text unchanged",
-			input: &PostTranslationContent{
+			input: &models.PostTranslationContent{
 				Title:   "Normal Title",
 				Content: "Normal Content",
 			},
@@ -141,12 +144,12 @@ func TestPostTranslationContent_Sanitize(t *testing.T) {
 func TestPostTranslationContent_ToJSON(t *testing.T) {
 	tests := []struct {
 		name    string
-		content *PostTranslationContent
+		content *models.PostTranslationContent
 		wantErr bool
 	}{
 		{
 			name: "serialize valid content",
-			content: &PostTranslationContent{
+			content: &models.PostTranslationContent{
 				Title:   "Test Title",
 				Content: "Test Content",
 			},
@@ -154,7 +157,7 @@ func TestPostTranslationContent_ToJSON(t *testing.T) {
 		},
 		{
 			name: "serialize with special characters",
-			content: &PostTranslationContent{
+			content: &models.PostTranslationContent{
 				Title:   "Title with \"quotes\" and \\ backslashes",
 				Content: "Content with newlines\nand tabs\t",
 			},
@@ -162,7 +165,7 @@ func TestPostTranslationContent_ToJSON(t *testing.T) {
 		},
 		{
 			name: "serialize empty content",
-			content: &PostTranslationContent{
+			content: &models.PostTranslationContent{
 				Title:   "",
 				Content: "",
 			},
@@ -172,7 +175,7 @@ func TestPostTranslationContent_ToJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			jsonStr, err := tt.content.ToJSON()
+			jsonStr, err := services.ToJSON(tt.content)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ToJSON() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -239,16 +242,16 @@ func TestParsePostTranslationContent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := ParsePostTranslationContent(tt.input)
+			result, err := services.ParsePostTranslationContent(tt.input)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("ParsePostTranslationContent() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("services.ParsePostTranslationContent() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if err != nil && tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
-				t.Errorf("ParsePostTranslationContent() error = %v, want error containing %v", err.Error(), tt.errMsg)
+				t.Errorf("services.ParsePostTranslationContent() error = %v, want error containing %v", err.Error(), tt.errMsg)
 			}
 			if !tt.wantErr && result == nil {
-				t.Errorf("ParsePostTranslationContent() returned nil result without error")
+				t.Errorf("services.ParsePostTranslationContent() returned nil result without error")
 			}
 		})
 	}
@@ -257,25 +260,25 @@ func TestParsePostTranslationContent(t *testing.T) {
 func TestPostTranslationContent_RoundTrip(t *testing.T) {
 	tests := []struct {
 		name    string
-		content *PostTranslationContent
+		content *models.PostTranslationContent
 	}{
 		{
 			name: "simple content",
-			content: &PostTranslationContent{
+			content: &models.PostTranslationContent{
 				Title:   "Test Title",
 				Content: "Test Content",
 			},
 		},
 		{
 			name: "content with special characters",
-			content: &PostTranslationContent{
+			content: &models.PostTranslationContent{
 				Title:   "Title with \"quotes\", newlines\n, and tabs\t",
 				Content: "Content with special chars: & < > ' \"",
 			},
 		},
 		{
 			name: "unicode content",
-			content: &PostTranslationContent{
+			content: &models.PostTranslationContent{
 				Title:   "Titre en français avec des accents: éàü",
 				Content: "内容包含中文字符",
 			},
@@ -285,15 +288,15 @@ func TestPostTranslationContent_RoundTrip(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Serialize to JSON
-			jsonStr, err := tt.content.ToJSON()
+			jsonStr, err := services.ToJSON(tt.content)
 			if err != nil {
 				t.Fatalf("ToJSON() error = %v", err)
 			}
 
 			// Parse back from JSON
-			parsed, err := ParsePostTranslationContent(jsonStr)
+			parsed, err := services.ParsePostTranslationContent(jsonStr)
 			if err != nil {
-				t.Fatalf("ParsePostTranslationContent() error = %v", err)
+				t.Fatalf("services.ParsePostTranslationContent() error = %v", err)
 			}
 
 			// Compare
@@ -310,26 +313,26 @@ func TestPostTranslationContent_RoundTrip(t *testing.T) {
 func TestTranslatableRecord_GetTranslationContent(t *testing.T) {
 	tests := []struct {
 		name    string
-		record  *TranslatableRecord
+		record  *services.TranslatableRecord
 		wantErr bool
 	}{
 		{
 			name: "valid JSON content",
-			record: &TranslatableRecord{
+			record: &services.TranslatableRecord{
 				Content: `{"title":"Test Title","content":"Test Content"}`,
 			},
 			wantErr: false,
 		},
 		{
 			name: "invalid JSON content",
-			record: &TranslatableRecord{
+			record: &services.TranslatableRecord{
 				Content: `{"title":"Test Title"`,
 			},
 			wantErr: true,
 		},
 		{
 			name: "empty content",
-			record: &TranslatableRecord{
+			record: &services.TranslatableRecord{
 				Content: "",
 			},
 			wantErr: true,

@@ -2,7 +2,9 @@ package blog
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"github.com/nicolasbonnici/gorest-blog/dtos"
 	"github.com/nicolasbonnici/gorest-blog/migrations"
+	"github.com/nicolasbonnici/gorest-blog/models"
 	"github.com/nicolasbonnici/gorest/database"
 	"github.com/nicolasbonnici/gorest/plugin"
 )
@@ -76,9 +78,9 @@ func (p *BlogPlugin) GetOpenAPIResources() []plugin.OpenAPIResource {
 		PluralName:    "posts",
 		BasePath:      "/posts",
 		Tags:          []string{"Blog"},
-		ResponseModel: Post{},
-		CreateModel:   CreatePostRequest{},
-		UpdateModel:   UpdatePostRequest{},
+		ResponseModel: models.Post{},
+		CreateModel:   dtos.PostCreateDTO{},
+		UpdateModel:   dtos.PostUpdateDTO{},
 		Description:   "Blog post management",
 	}}
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/nicolasbonnici/gorest-blog/services"
 	"github.com/nicolasbonnici/gorest/database"
 	_ "github.com/nicolasbonnici/gorest/database/sqlite"
 )
@@ -37,7 +38,7 @@ func setupMetricsTestDB(t *testing.T) database.Database {
 
 func TestMetricsService_InitializeMetrics(t *testing.T) {
 	db := setupMetricsTestDB(t)
-	service := NewMetricsService(db)
+	service := services.NewMetricsService(db)
 	ctx := context.Background()
 
 	postID := uuid.New().String()
@@ -71,7 +72,7 @@ func TestMetricsService_InitializeMetrics(t *testing.T) {
 
 func TestMetricsService_IncrementViews(t *testing.T) {
 	db := setupMetricsTestDB(t)
-	service := NewMetricsService(db)
+	service := services.NewMetricsService(db)
 	ctx := context.Background()
 
 	postID := uuid.New().String()
@@ -112,7 +113,7 @@ func TestMetricsService_IncrementViews(t *testing.T) {
 
 func TestMetricsService_IncrementLikes(t *testing.T) {
 	db := setupMetricsTestDB(t)
-	service := NewMetricsService(db)
+	service := services.NewMetricsService(db)
 	ctx := context.Background()
 
 	postID := uuid.New().String()
@@ -139,7 +140,7 @@ func TestMetricsService_IncrementLikes(t *testing.T) {
 
 func TestMetricsService_DecrementLikes(t *testing.T) {
 	db := setupMetricsTestDB(t)
-	service := NewMetricsService(db)
+	service := services.NewMetricsService(db)
 	ctx := context.Background()
 
 	postID := uuid.New().String()
@@ -185,7 +186,7 @@ func TestMetricsService_DecrementLikes(t *testing.T) {
 
 func TestMetricsService_DecrementLikesMinimumZero(t *testing.T) {
 	db := setupMetricsTestDB(t)
-	service := NewMetricsService(db)
+	service := services.NewMetricsService(db)
 	ctx := context.Background()
 
 	postID := uuid.New().String()
@@ -212,7 +213,7 @@ func TestMetricsService_DecrementLikesMinimumZero(t *testing.T) {
 
 func TestMetricsService_IncrementComments(t *testing.T) {
 	db := setupMetricsTestDB(t)
-	service := NewMetricsService(db)
+	service := services.NewMetricsService(db)
 	ctx := context.Background()
 
 	postID := uuid.New().String()
@@ -239,7 +240,7 @@ func TestMetricsService_IncrementComments(t *testing.T) {
 
 func TestMetricsService_DecrementComments(t *testing.T) {
 	db := setupMetricsTestDB(t)
-	service := NewMetricsService(db)
+	service := services.NewMetricsService(db)
 	ctx := context.Background()
 
 	postID := uuid.New().String()
@@ -285,7 +286,7 @@ func TestMetricsService_DecrementComments(t *testing.T) {
 
 func TestMetricsService_GetMetricsNonExistent(t *testing.T) {
 	db := setupMetricsTestDB(t)
-	service := NewMetricsService(db)
+	service := services.NewMetricsService(db)
 	ctx := context.Background()
 
 	postID := uuid.New().String()
@@ -303,7 +304,7 @@ func TestMetricsService_GetMetricsNonExistent(t *testing.T) {
 
 func TestMetricsService_InvalidPostID(t *testing.T) {
 	db := setupMetricsTestDB(t)
-	service := NewMetricsService(db)
+	service := services.NewMetricsService(db)
 	ctx := context.Background()
 
 	invalidID := "not-a-uuid"
@@ -326,7 +327,7 @@ func TestMetricsService_InvalidPostID(t *testing.T) {
 
 func TestMetricsService_MultipleMetrics(t *testing.T) {
 	db := setupMetricsTestDB(t)
-	service := NewMetricsService(db)
+	service := services.NewMetricsService(db)
 	ctx := context.Background()
 
 	postID := uuid.New().String()

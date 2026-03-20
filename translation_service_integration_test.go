@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/nicolasbonnici/gorest-blog/models"
+	"github.com/nicolasbonnici/gorest-blog/services"
 	"github.com/nicolasbonnici/gorest-blog/types"
 	"github.com/nicolasbonnici/gorest/crud"
 	"github.com/nicolasbonnici/gorest/database"
@@ -26,7 +28,7 @@ func TestLoadPostsWithTranslations_Integration(t *testing.T) {
 		t.Fatalf("Failed to create test schema: %v", err)
 	}
 
-	service := NewTranslationService(db)
+	service := services.NewTranslationService(db)
 
 	postID1 := uuid.New().String()
 	postID2 := uuid.New().String()
@@ -69,7 +71,7 @@ func TestLoadPostsWithTranslations_Integration(t *testing.T) {
 		}
 
 		for _, post := range result.Posts {
-			if post.Id == postID1 {
+			if post.ID == postID1 {
 				if len(post.Translations) != 2 {
 					t.Errorf("Expected 2 translations for post 1, got %d", len(post.Translations))
 				}
@@ -94,7 +96,7 @@ func TestLoadPostsWithTranslations_Integration(t *testing.T) {
 				}
 			}
 
-			if post.Id == postID2 {
+			if post.ID == postID2 {
 				if len(post.Translations) != 1 {
 					t.Errorf("Expected 1 translation for post 2, got %d", len(post.Translations))
 				}
@@ -237,12 +239,12 @@ func insertTestPost(ctx context.Context, db database.Database, id, slug string, 
 }
 
 func insertTestTranslation(ctx context.Context, db database.Database, postID, locale, title, content string) error {
-	translationContent := &PostTranslationContent{
+	translationContent := &models.PostTranslationContent{
 		Title:   title,
 		Content: content,
 	}
 
-	jsonContent, err := translationContent.ToJSON()
+	jsonContent, err := services.ToJSON(translationContent)
 	if err != nil {
 		return err
 	}
@@ -251,6 +253,6 @@ func insertTestTranslation(ctx context.Context, db database.Database, postID, lo
 	_, err = db.Exec(ctx, `
 		INSERT INTO translations (id, translatable_id, translatable, locale, content, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)
-	`, translationID, postID, TranslatableTypePost, locale, jsonContent, time.Now().Format(time.RFC3339))
+	`, translationID, postID, services.TranslatableTypePost, locale, jsonContent, time.Now().Format(time.RFC3339))
 	return err
 }

@@ -10,6 +10,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/nicolasbonnici/gorest-blog/importer"
 	"github.com/nicolasbonnici/gorest-blog/importer/engines"
+	"github.com/nicolasbonnici/gorest-blog/models"
+	"github.com/nicolasbonnici/gorest-blog/services"
 	"github.com/nicolasbonnici/gorest-blog/types"
 	"github.com/nicolasbonnici/gorest/crud"
 	"github.com/nicolasbonnici/gorest/database"
@@ -17,7 +19,7 @@ import (
 )
 
 type ImporterService struct {
-	crud     *crud.CRUD[Post]
+	crud     *crud.CRUD[models.Post]
 	db       database.Database
 	qb       *query.Builder
 	reporter importer.ProgressReporter
@@ -28,7 +30,7 @@ func NewImporterService(db database.Database, reporter importer.ProgressReporter
 		reporter = &importer.NoOpProgressReporter{}
 	}
 	return &ImporterService{
-		crud:     crud.New[Post](db),
+		crud:     crud.New[models.Post](db),
 		db:       db,
 		qb:       query.New(db.Dialect()),
 		reporter: reporter,
@@ -97,7 +99,7 @@ func (s *ImporterService) Sync(ctx context.Context, opts importer.ImportOptions,
 		return nil, fmt.Errorf("failed to fetch local posts: %w", err)
 	}
 
-	localMap := make(map[string]*Post)
+	localMap := make(map[string]*models.Post)
 	for i := range localPosts {
 		localMap[localPosts[i].Slug] = &localPosts[i]
 	}
@@ -114,7 +116,7 @@ func (s *ImporterService) Sync(ctx context.Context, opts importer.ImportOptions,
 	}
 }
 
-func (s *ImporterService) syncLocalWins(ctx context.Context, localMap map[string]*Post, remoteMap map[string]importer.Post, engine engines.Engine, opts importer.ImportOptions) *importer.SyncResult {
+func (s *ImporterService) syncLocalWins(ctx context.Context, localMap map[string]*models.Post, remoteMap map[string]importer.Post, engine engines.Engine, opts importer.ImportOptions) *importer.SyncResult {
 	result := &importer.SyncResult{
 		Errors: make([]importer.SyncError, 0),
 	}
@@ -136,7 +138,7 @@ func (s *ImporterService) syncLocalWins(ctx context.Context, localMap map[string
 	return result
 }
 
-func (s *ImporterService) syncRemoteToLocal(ctx context.Context, remoteMap map[string]importer.Post, localMap map[string]*Post, opts importer.ImportOptions, result *importer.SyncResult, current int) int {
+func (s *ImporterService) syncRemoteToLocal(ctx context.Context, remoteMap map[string]importer.Post, localMap map[string]*models.Post, opts importer.ImportOptions, result *importer.SyncResult, current int) int {
 	for slug, remotePost := range remoteMap {
 		current++
 		if s.reporter != nil {
@@ -158,7 +160,7 @@ func (s *ImporterService) syncRemoteToLocal(ctx context.Context, remoteMap map[s
 	return current
 }
 
-func (s *ImporterService) syncLocalToRemote(ctx context.Context, localMap map[string]*Post, remoteMap map[string]importer.Post, engine engines.Engine, opts importer.ImportOptions, result *importer.SyncResult, current *int) {
+func (s *ImporterService) syncLocalToRemote(ctx context.Context, localMap map[string]*models.Post, remoteMap map[string]importer.Post, engine engines.Engine, opts importer.ImportOptions, result *importer.SyncResult, current *int) {
 	for slug, localPost := range localMap {
 		*current++
 		if s.reporter != nil {
@@ -175,7 +177,7 @@ func (s *ImporterService) syncLocalToRemote(ctx context.Context, localMap map[st
 	}
 }
 
-func (s *ImporterService) createRemotePost(ctx context.Context, engine engines.Engine, localPost *Post, slug string, opts importer.ImportOptions, result *importer.SyncResult) {
+func (s *ImporterService) createRemotePost(ctx context.Context, engine engines.Engine, localPost *models.Post, slug string, opts importer.ImportOptions, result *importer.SyncResult) {
 	if opts.DryRun {
 		result.RemoteCreated++
 		return
@@ -192,7 +194,7 @@ func (s *ImporterService) createRemotePost(ctx context.Context, engine engines.E
 	}
 }
 
-func (s *ImporterService) updateRemotePost(ctx context.Context, engine engines.Engine, localPost *Post, remotePost importer.Post, slug string, opts importer.ImportOptions, result *importer.SyncResult) {
+func (s *ImporterService) updateRemotePost(ctx context.Context, engine engines.Engine, localPost *models.Post, remotePost importer.Post, slug string, opts importer.ImportOptions, result *importer.SyncResult) {
 	needsUpdate, err := s.hasLocalChanges(ctx, localPost, remotePost)
 	if err != nil {
 		result.Errors = append(result.Errors, importer.SyncError{
@@ -224,7 +226,7 @@ func (s *ImporterService) updateRemotePost(ctx context.Context, engine engines.E
 	}
 }
 
-func (s *ImporterService) syncRemoteWins(ctx context.Context, localMap map[string]*Post, remoteMap map[string]importer.Post, opts importer.ImportOptions) *importer.SyncResult {
+func (s *ImporterService) syncRemoteWins(ctx context.Context, localMap map[string]*models.Post, remoteMap map[string]importer.Post, opts importer.ImportOptions) *importer.SyncResult {
 	result := &importer.SyncResult{
 		Errors: make([]importer.SyncError, 0),
 	}
@@ -270,7 +272,7 @@ func (s *ImporterService) syncRemoteWins(ctx context.Context, localMap map[strin
 	return result
 }
 
-func (s *ImporterService) syncImportOnly(ctx context.Context, localMap map[string]*Post, remoteMap map[string]importer.Post, opts importer.ImportOptions) *importer.SyncResult {
+func (s *ImporterService) syncImportOnly(ctx context.Context, localMap map[string]*models.Post, remoteMap map[string]importer.Post, opts importer.ImportOptions) *importer.SyncResult {
 	result := &importer.SyncResult{
 		Errors: make([]importer.SyncError, 0),
 	}
@@ -428,53 +430,53 @@ func (s *ImporterService) handleDryRun(ctx context.Context, slug string) (string
 	return "created", nil
 }
 
-func (s *ImporterService) updateExistingPost(ctx context.Context, existing *Post, postModel Post, post importer.Post, defaultLocale string, opts importer.ImportOptions) (string, error) {
-	if err := s.crud.Update(ctx, existing.Id, postModel); err != nil {
+func (s *ImporterService) updateExistingPost(ctx context.Context, existing *models.Post, postModel models.Post, post importer.Post, defaultLocale string, opts importer.ImportOptions) (string, error) {
+	if err := s.crud.Update(ctx, existing.ID, postModel); err != nil {
 		return "", fmt.Errorf("update failed: %w", err)
 	}
 
-	userUUID := s.parseUserUUID(postModel.UserId)
-	translationService := NewTranslationService(s.db)
-	if err := translationService.UpdateTranslation(ctx, existing.Id, defaultLocale, post.Title, post.Content, userUUID); err != nil {
+	userUUID := s.parseUserUUID(postModel.UserID)
+	translationService := services.NewTranslationService(s.db)
+	if err := translationService.UpdateTranslation(ctx, existing.ID, defaultLocale, post.Title, post.Content, userUUID); err != nil {
 		return "", fmt.Errorf("failed to update translation: %w", err)
 	}
 
-	metricsService := NewMetricsService(s.db)
-	if err := metricsService.SetMetrics(ctx, existing.Id, int64(post.ViewsCount), int64(post.LikesCount), int64(post.CommentsCount)); err != nil {
+	metricsService := services.NewMetricsService(s.db)
+	if err := metricsService.SetMetrics(ctx, existing.ID, int64(post.ViewsCount), int64(post.LikesCount), int64(post.CommentsCount)); err != nil {
 		return "", fmt.Errorf("failed to update metrics: %w", err)
 	}
 
-	s.handleCommentImport(ctx, existing.Id, existing.Slug, post.Comments, opts, metricsService)
+	s.handleCommentImport(ctx, existing.ID, existing.Slug, post.Comments, opts, metricsService)
 
 	return "updated", nil
 }
 
-func (s *ImporterService) createNewPost(ctx context.Context, postModel Post, post importer.Post, defaultLocale string, opts importer.ImportOptions) (string, error) {
+func (s *ImporterService) createNewPost(ctx context.Context, postModel models.Post, post importer.Post, defaultLocale string, opts importer.ImportOptions) (string, error) {
 	if err := s.crud.Create(ctx, postModel); err != nil {
 		return "", fmt.Errorf("create failed: %w", err)
 	}
 
-	translations := map[string]*PostTranslationContent{
+	translations := map[string]*models.PostTranslationContent{
 		defaultLocale: {
 			Title:   post.Title,
 			Content: post.Content,
 		},
 	}
 
-	userUUID := s.parseUserUUID(postModel.UserId)
-	translationService := NewTranslationService(s.db)
-	if err := translationService.CreateTranslations(ctx, postModel.Id, translations, userUUID); err != nil {
-		_ = s.crud.Delete(ctx, postModel.Id)
+	userUUID := s.parseUserUUID(postModel.UserID)
+	translationService := services.NewTranslationService(s.db)
+	if err := translationService.CreateTranslations(ctx, postModel.ID, translations, userUUID); err != nil {
+		_ = s.crud.Delete(ctx, postModel.ID)
 		return "", fmt.Errorf("failed to create translations: %w", err)
 	}
 
-	metricsService := NewMetricsService(s.db)
-	if err := metricsService.SetMetrics(ctx, postModel.Id, int64(post.ViewsCount), int64(post.LikesCount), int64(post.CommentsCount)); err != nil {
-		_ = s.crud.Delete(ctx, postModel.Id)
+	metricsService := services.NewMetricsService(s.db)
+	if err := metricsService.SetMetrics(ctx, postModel.ID, int64(post.ViewsCount), int64(post.LikesCount), int64(post.CommentsCount)); err != nil {
+		_ = s.crud.Delete(ctx, postModel.ID)
 		return "", fmt.Errorf("failed to set metrics: %w", err)
 	}
 
-	s.handleCommentImport(ctx, postModel.Id, postModel.Slug, post.Comments, opts, metricsService)
+	s.handleCommentImport(ctx, postModel.ID, postModel.Slug, post.Comments, opts, metricsService)
 
 	return "created", nil
 }
@@ -490,7 +492,7 @@ func (s *ImporterService) parseUserUUID(userID *string) *uuid.UUID {
 	return &parsed
 }
 
-func (s *ImporterService) handleCommentImport(ctx context.Context, postID, slug string, comments []engines.Comment, opts importer.ImportOptions, metricsService *MetricsService) {
+func (s *ImporterService) handleCommentImport(ctx context.Context, postID, slug string, comments []engines.Comment, opts importer.ImportOptions, metricsService *services.MetricsService) {
 	if !opts.ImportComments || len(comments) == 0 {
 		return
 	}
@@ -503,14 +505,14 @@ func (s *ImporterService) handleCommentImport(ctx context.Context, postID, slug 
 		return
 	}
 
-	if err := metricsService.SetMetric(ctx, postID, MetricNameComments, int64(count)); err != nil {
+	if err := metricsService.SetMetric(ctx, postID, services.MetricNameComments, int64(count)); err != nil {
 		if s.reporter != nil {
 			s.reporter.Error(fmt.Errorf("failed to update comment count metric: %w", err))
 		}
 	}
 }
 
-func (s *ImporterService) postToModel(post importer.Post, userID string) Post {
+func (s *ImporterService) postToModel(post importer.Post, userID string) models.Post {
 	status := types.PostStatusDrafted
 	var publishedAt *time.Time
 
@@ -526,12 +528,12 @@ func (s *ImporterService) postToModel(post importer.Post, userID string) Post {
 		slug = slugify(post.Title)
 	}
 
-	postModel := Post{
-		Id:          uuid.New().String(),
+	postModel := models.Post{
+		ID:          uuid.New().String(),
 		Slug:        slug,
 		Status:      status,
 		PublishedAt: publishedAt,
-		UserId:      &userID,
+		UserID:      &userID,
 	}
 
 	return postModel
@@ -601,7 +603,7 @@ func (s *ImporterService) truncatePosts(ctx context.Context) error {
 	return nil
 }
 
-func (s *ImporterService) findBySlug(ctx context.Context, slug string) (*Post, error) {
+func (s *ImporterService) findBySlug(ctx context.Context, slug string) (*models.Post, error) {
 	sql, args, err := s.qb.
 		Select("id", "user_id", "slug", "status", "published_at", "remote_source_id", "remote_source", "updated_at", "created_at").
 		From("post").
@@ -612,7 +614,7 @@ func (s *ImporterService) findBySlug(ctx context.Context, slug string) (*Post, e
 		return nil, fmt.Errorf("failed to build query: %w", err)
 	}
 
-	var post Post
+	var post models.Post
 	rows, err := s.db.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
@@ -624,8 +626,8 @@ func (s *ImporterService) findBySlug(ctx context.Context, slug string) (*Post, e
 	}
 
 	if err := rows.Scan(
-		&post.Id,
-		&post.UserId,
+		&post.ID,
+		&post.UserID,
 		&post.Slug,
 		&post.Status,
 		&post.PublishedAt,
@@ -736,43 +738,43 @@ func (s *ImporterService) importRemotePost(ctx context.Context, post importer.Po
 	source := opts.Source
 	postModel.RemoteSource = &source
 
-	if err := s.crud.Update(ctx, postModel.Id, postModel); err != nil {
-		_ = s.crud.Delete(ctx, postModel.Id)
+	if err := s.crud.Update(ctx, postModel.ID, postModel); err != nil {
+		_ = s.crud.Delete(ctx, postModel.ID)
 		return fmt.Errorf("failed to update remote source ID: %w", err)
 	}
 
-	translations := map[string]*PostTranslationContent{
+	translations := map[string]*models.PostTranslationContent{
 		defaultLocale: {
 			Title:   post.Title,
 			Content: post.Content,
 		},
 	}
 
-	userUUID := s.parseUserUUID(postModel.UserId)
-	translationService := NewTranslationService(s.db)
-	if err := translationService.CreateTranslations(ctx, postModel.Id, translations, userUUID); err != nil {
-		_ = s.crud.Delete(ctx, postModel.Id)
+	userUUID := s.parseUserUUID(postModel.UserID)
+	translationService := services.NewTranslationService(s.db)
+	if err := translationService.CreateTranslations(ctx, postModel.ID, translations, userUUID); err != nil {
+		_ = s.crud.Delete(ctx, postModel.ID)
 		return fmt.Errorf("failed to create translations: %w", err)
 	}
 
-	metricsService := NewMetricsService(s.db)
-	if err := metricsService.SetMetrics(ctx, postModel.Id, int64(post.ViewsCount), int64(post.LikesCount), int64(post.CommentsCount)); err != nil {
-		_ = s.crud.Delete(ctx, postModel.Id)
+	metricsService := services.NewMetricsService(s.db)
+	if err := metricsService.SetMetrics(ctx, postModel.ID, int64(post.ViewsCount), int64(post.LikesCount), int64(post.CommentsCount)); err != nil {
+		_ = s.crud.Delete(ctx, postModel.ID)
 		return fmt.Errorf("failed to set metrics: %w", err)
 	}
 
-	s.handleCommentImport(ctx, postModel.Id, postModel.Slug, post.Comments, opts, metricsService)
+	s.handleCommentImport(ctx, postModel.ID, postModel.Slug, post.Comments, opts, metricsService)
 
 	return nil
 }
 
-func (s *ImporterService) pushPostToRemote(ctx context.Context, engine engines.Engine, localPost *Post, opts importer.ImportOptions, isCreate bool) error {
+func (s *ImporterService) pushPostToRemote(ctx context.Context, engine engines.Engine, localPost *models.Post, opts importer.ImportOptions, isCreate bool) error {
 	if opts.APIKey == "" {
 		return fmt.Errorf("API key required for pushing changes (use --api-key or DEVTO_API_KEY)")
 	}
 
-	translationService := NewTranslationService(s.db)
-	translations, err := translationService.ListTranslations(ctx, localPost.Id)
+	translationService := services.NewTranslationService(s.db)
+	translations, err := translationService.ListTranslations(ctx, localPost.ID)
 	if err != nil {
 		return fmt.Errorf("failed to load translations: %w", err)
 	}
@@ -806,11 +808,11 @@ func (s *ImporterService) pushPostToRemote(ctx context.Context, engine engines.E
 			return fmt.Errorf("failed to create remote post: %w", err)
 		}
 
-		if err := s.storeRemoteID(ctx, localPost.Id, opts.Source, remoteID); err != nil {
+		if err := s.storeRemoteID(ctx, localPost.ID, opts.Source, remoteID); err != nil {
 			return fmt.Errorf("failed to store remote ID: %w", err)
 		}
 	} else {
-		remoteID, err := s.getRemoteID(ctx, localPost.Id, opts.Source)
+		remoteID, err := s.getRemoteID(ctx, localPost.ID, opts.Source)
 		if err != nil {
 			return fmt.Errorf("failed to get remote ID: %w", err)
 		}
@@ -823,9 +825,9 @@ func (s *ImporterService) pushPostToRemote(ctx context.Context, engine engines.E
 	return nil
 }
 
-func (s *ImporterService) hasLocalChanges(ctx context.Context, local *Post, remote importer.Post) (bool, error) {
-	translationService := NewTranslationService(s.db)
-	translations, err := translationService.ListTranslations(ctx, local.Id)
+func (s *ImporterService) hasLocalChanges(ctx context.Context, local *models.Post, remote importer.Post) (bool, error) {
+	translationService := services.NewTranslationService(s.db)
+	translations, err := translationService.ListTranslations(ctx, local.ID)
 	if err != nil {
 		return false, fmt.Errorf("failed to load translations: %w", err)
 	}
@@ -857,35 +859,35 @@ func (s *ImporterService) hasLocalChanges(ctx context.Context, local *Post, remo
 	return false, nil
 }
 
-func (s *ImporterService) updateFromRemote(ctx context.Context, existing *Post, remotePost importer.Post, opts importer.ImportOptions) error {
+func (s *ImporterService) updateFromRemote(ctx context.Context, existing *models.Post, remotePost importer.Post, opts importer.ImportOptions) error {
 	postModel := s.postToModel(remotePost, opts.UserID)
-	postModel.Id = existing.Id
+	postModel.ID = existing.ID
 
 	if opts.DryRun {
 		return nil
 	}
 
-	if err := s.crud.Update(ctx, existing.Id, postModel); err != nil {
+	if err := s.crud.Update(ctx, existing.ID, postModel); err != nil {
 		return fmt.Errorf("update failed: %w", err)
 	}
 
-	userUUID := s.parseUserUUID(postModel.UserId)
-	translationService := NewTranslationService(s.db)
-	if err := translationService.UpdateTranslation(ctx, existing.Id, "en", remotePost.Title, remotePost.Content, userUUID); err != nil {
+	userUUID := s.parseUserUUID(postModel.UserID)
+	translationService := services.NewTranslationService(s.db)
+	if err := translationService.UpdateTranslation(ctx, existing.ID, "en", remotePost.Title, remotePost.Content, userUUID); err != nil {
 		return fmt.Errorf("failed to update translation: %w", err)
 	}
 
-	metricsService := NewMetricsService(s.db)
-	if err := metricsService.SetMetrics(ctx, existing.Id, int64(remotePost.ViewsCount), int64(remotePost.LikesCount), int64(remotePost.CommentsCount)); err != nil {
+	metricsService := services.NewMetricsService(s.db)
+	if err := metricsService.SetMetrics(ctx, existing.ID, int64(remotePost.ViewsCount), int64(remotePost.LikesCount), int64(remotePost.CommentsCount)); err != nil {
 		return fmt.Errorf("failed to update metrics: %w", err)
 	}
 
-	s.handleCommentImport(ctx, existing.Id, existing.Slug, remotePost.Comments, opts, metricsService)
+	s.handleCommentImport(ctx, existing.ID, existing.Slug, remotePost.Comments, opts, metricsService)
 
 	return nil
 }
 
-func (s *ImporterService) fetchLocalPosts(ctx context.Context, userID string) ([]Post, error) {
+func (s *ImporterService) fetchLocalPosts(ctx context.Context, userID string) ([]models.Post, error) {
 	sql, args, err := s.qb.
 		Select("id", "user_id", "slug", "status", "published_at", "remote_source_id", "remote_source", "updated_at", "created_at").
 		From("post").
@@ -901,12 +903,12 @@ func (s *ImporterService) fetchLocalPosts(ctx context.Context, userID string) ([
 	}
 	defer func() { _ = rows.Close() }()
 
-	posts := make([]Post, 0)
+	posts := make([]models.Post, 0)
 	for rows.Next() {
-		var post Post
+		var post models.Post
 		if err := rows.Scan(
-			&post.Id,
-			&post.UserId,
+			&post.ID,
+			&post.UserID,
 			&post.Slug,
 			&post.Status,
 			&post.PublishedAt,

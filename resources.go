@@ -1,29 +1,30 @@
 package blog
 
 import (
-	"context"
 	"net/url"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
-	auth "github.com/nicolasbonnici/gorest-auth"
-	"github.com/nicolasbonnici/gorest-blog/types"
+	"github.com/nicolasbonnici/gorest-blog/converters"
+	"github.com/nicolasbonnici/gorest-blog/dtos"
+	"github.com/nicolasbonnici/gorest-blog/hooks"
+	"github.com/nicolasbonnici/gorest-blog/models"
+	"github.com/nicolasbonnici/gorest-blog/services"
 	"github.com/nicolasbonnici/gorest-rbac"
 	"github.com/nicolasbonnici/gorest/crud"
 	"github.com/nicolasbonnici/gorest/database"
 	"github.com/nicolasbonnici/gorest/filter"
 	"github.com/nicolasbonnici/gorest/pagination"
+	"github.com/nicolasbonnici/gorest/query"
 	"github.com/nicolasbonnici/gorest/response"
 )
 
 type PostResource struct {
-	DB                 database.Database
-	CRUD               *crud.CRUD[Post]
-	Config             *Config
-	PaginationLimit    int
-	PaginationMaxLimit int
-	Voter              rbac.Voter
+	db                 database.Database
+	crud               *crud.CRUD[models.Post]
+	hooks              *hooks.PostHooks
+	converter          *converters.PostConverter
+	config             *Config
+	translationService *services.TranslationService
 }
 
 func RegisterPostRoutes(app *fiber.App, db database.Database, config *Config) {
@@ -31,8 +32,8 @@ func RegisterPostRoutes(app *fiber.App, db database.Database, config *Config) {
 		DefaultPolicy: rbac.DenyAll,
 		SuperuserRole: "admin",
 		RoleHierarchy: map[string][]string{
-			"writer":    {"moderator"},
-			"moderator": {"reader"},
+			"moderator": {"writer"},
+			"writer":    {"reader"},
 		},
 		CacheEnabled:       true,
 		CacheTTL:           300,
@@ -45,26 +46,27 @@ func RegisterPostRoutes(app *fiber.App, db database.Database, config *Config) {
 		panic("failed to create RBAC voter: " + err.Error())
 	}
 
+	loadRoles := createRoleLoader(db)
 	roleProvider := rbac.NewFiberRoleProvider("user_roles", "user_id")
 
 	res := &PostResource{
-		DB:                 db,
-		CRUD:               crud.New[Post](db),
-		Config:             config,
-		PaginationLimit:    config.PaginationLimit,
-		PaginationMaxLimit: config.MaxPaginationLimit,
-		Voter:              voter,
+		db:                 db,
+		crud:               crud.New[models.Post](db),
+		hooks:              hooks.NewPostHooks(db, voter),
+		converter:          &converters.PostConverter{},
+		config:             config,
+		translationService: services.NewTranslationService(db),
 	}
 
 	app.Get("/posts", res.List)
 	app.Get("/posts/:id", res.Get)
-	app.Post("/posts", rbac.RequireRole(voter, roleProvider, "writer"), res.Create)
-	app.Put("/posts/:id", rbac.RequireRole(voter, roleProvider, "writer", "moderator"), res.Update)
-	app.Delete("/posts/:id", rbac.RequireRole(voter, roleProvider, "writer"), res.Delete)
+	app.Post("/posts", loadRoles, rbac.RequireRole(voter, roleProvider, "writer"), res.Create)
+	app.Put("/posts/:id", loadRoles, rbac.RequireRole(voter, roleProvider, "writer", "moderator"), res.Update)
+	app.Delete("/posts/:id", loadRoles, rbac.RequireRole(voter, roleProvider, "writer"), res.Delete)
 }
 
 func (r *PostResource) List(c *fiber.Ctx) error {
-	limit := pagination.ParseIntQuery(c, "limit", r.PaginationLimit, r.PaginationMaxLimit)
+	limit := pagination.ParseIntQuery(c, "limit", r.config.PaginationLimit, r.config.MaxPaginationLimit)
 	page := pagination.ParseIntQuery(c, "page", 1, 10000)
 	if page < 1 {
 		page = 1
@@ -72,335 +74,221 @@ func (r *PostResource) List(c *fiber.Ctx) error {
 	offset := (page - 1) * limit
 	includeCount := c.Query("count", "true") != "false"
 
-	allowedFields := []string{"id", "user_id", "slug", "status", "published_at", "updated_at", "created_at"}
-
 	queryParams := make(url.Values)
 	for key, value := range c.Context().QueryArgs().All() {
 		queryParams.Add(string(key), string(value))
 	}
 
-	filters := filter.NewFilterSet(allowedFields, r.DB.Dialect())
+	fieldMap := map[string]string{
+		"id":           "id",
+		"user_id":      "user_id",
+		"slug":         "slug",
+		"status":       "status",
+		"published_at": "published_at",
+		"updated_at":   "updated_at",
+		"created_at":   "created_at",
+	}
+
+	var conditions []query.Condition
+	filters := filter.NewFilterSetWithMapping(fieldMap, r.db.Dialect())
 	if err := filters.ParseFromQuery(queryParams); err != nil {
-		return pagination.SendPaginatedError(c, 400, err.Error())
+		return response.SendError(c, fiber.StatusBadRequest, err.Error())
 	}
+	conditions = filters.Conditions()
 
-	ordering := filter.NewOrderSet(allowedFields)
+	var orderBy []crud.OrderByClause
+	ordering := filter.NewOrderSetWithMapping(fieldMap)
 	if err := ordering.ParseFromQuery(queryParams); err != nil {
-		return pagination.SendPaginatedError(c, 400, err.Error())
+		return response.SendError(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	filterOrderClauses := ordering.OrderClauses()
-	orderByClauses := make([]crud.OrderByClause, len(filterOrderClauses))
-	for i, oc := range filterOrderClauses {
-		orderByClauses[i] = crud.OrderByClause{
+	orderClauses := ordering.OrderClauses()
+	orderBy = make([]crud.OrderByClause, len(orderClauses))
+	for i, oc := range orderClauses {
+		orderBy[i] = crud.OrderByClause{
 			Column:    oc.Column,
 			Direction: oc.Direction,
 		}
 	}
 
-	ctx := c.UserContext()
+	if err := r.hooks.GetAllHook(c, &conditions, &orderBy); err != nil {
+		return err
+	}
 
-	translationService := NewTranslationService(r.DB)
-	result, err := translationService.LoadPostsWithTranslations(ctx, limit, offset, includeCount, filters.Conditions(), orderByClauses)
+	ctx := c.UserContext()
+	result, err := r.translationService.LoadPostsWithTranslations(ctx, limit, offset, includeCount, conditions, orderBy)
 	if err != nil {
-		return pagination.SendPaginatedError(c, 500, err.Error())
+		return response.SendError(c, fiber.StatusInternalServerError, err.Error())
+	}
+
+	if err := r.hooks.EnrichGetAll(ctx, c, result.Posts); err != nil {
+		return response.SendError(c, fiber.StatusInternalServerError, "failed to enrich posts")
 	}
 
 	items := make([]interface{}, len(result.Posts))
 	for i, post := range result.Posts {
-		filtered, err := r.Voter.FilterRead(ctx, post)
+		filtered, err := r.hooks.ApplyRBACFilter(ctx, post)
 		if err != nil {
-			items[i] = *post
+			items[i] = r.converter.ModelToResponseDTO(*post)
 		} else {
 			items[i] = filtered
 		}
 	}
 
-	return pagination.SendHydraCollection(c, items, result.Total, limit, page, r.PaginationLimit)
+	return pagination.SendHydraCollection(c, items, result.Total, limit, page, r.config.PaginationLimit)
 }
 
 func (r *PostResource) Get(c *fiber.Ctx) error {
 	id := c.Params("id")
 	ctx := c.UserContext()
 
-	item, err := r.CRUD.GetByID(ctx, id)
+	if err := r.hooks.GetByIDHook(c, id); err != nil {
+		return err
+	}
+
+	item, err := r.crud.GetByID(ctx, id)
+	if crud.IsNotFoundError(err) {
+		return response.SendError(c, fiber.StatusNotFound, "post not found")
+	}
 	if err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "Not found"})
+		return response.SendError(c, fiber.StatusInternalServerError, "database error")
 	}
 
-	translationService := NewTranslationService(r.DB)
-	translations, err := translationService.ListTranslations(ctx, id)
-	if err == nil && len(translations) > 0 {
-		item.Translations = translations
+	if err := r.hooks.EnrichGetByID(ctx, c, item); err != nil {
+		return response.SendError(c, fiber.StatusInternalServerError, "failed to enrich post")
 	}
 
-	metricsService := NewMetricsService(r.DB)
-	metrics, err := metricsService.GetMetrics(ctx, id)
-	if err == nil {
-		item.Metrics = metrics
-	}
-
-	// Asynchronously increment view count
-	go func() {
-		bgCtx := context.Background()
-		_ = metricsService.IncrementViews(bgCtx, id)
-	}()
-
-	// Apply RBAC filtering
-	filtered, err := r.Voter.FilterRead(ctx, item)
+	filtered, err := r.hooks.ApplyRBACFilter(ctx, item)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Failed to filter response"})
+		return response.SendFormatted(c, fiber.StatusOK, r.converter.ModelToResponseDTO(*item))
 	}
 
-	return response.SendFormatted(c, 200, filtered)
+	return response.SendFormatted(c, fiber.StatusOK, filtered)
 }
 
 func (r *PostResource) Create(c *fiber.Ctx) error {
-	var req CreatePostRequest
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
-	}
-
-	if err := req.Validate(); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+	var dto dtos.PostCreateDTO
+	if err := c.BodyParser(&dto); err != nil {
+		return response.SendError(c, fiber.StatusBadRequest, "invalid request body")
 	}
 
 	ctx := c.UserContext()
 
-	item := r.buildPostFromRequest(c, &req)
-
-	// Clear read-only fields before RBAC validation
-	tempId := item.Id
-	item.Id = ""
-	item.RemoteSourceID = nil
-	item.RemoteSource = nil
-
-	if err := r.Voter.ValidateWrite(ctx, &item); err != nil {
-		return c.Status(403).JSON(fiber.Map{"error": err.Error()})
+	var userID *string
+	if uid, ok := c.Locals("user_id").(string); ok && uid != "" {
+		userID = &uid
 	}
 
-	// Restore ID for creation
-	item.Id = tempId
+	model := r.converter.CreateDTOToModel(dto, userID)
 
-	if err := r.createPostWithDependencies(ctx, &item, req.Translations); err != nil {
+	if err := r.hooks.CreateHook(c, dto, &model); err != nil {
 		return err
 	}
 
-	return r.buildCreateResponse(c, ctx, &item)
-}
-
-func (r *PostResource) buildPostFromRequest(c *fiber.Ctx, req *CreatePostRequest) Post {
-	item := Post{
-		Id:     uuid.New().String(),
-		Slug:   req.Slug,
-		Status: req.Status,
+	if err := r.crud.Create(ctx, model); err != nil {
+		return response.SendError(c, fiber.StatusInternalServerError, "database error")
 	}
 
-	if user := auth.GetAuthenticatedUser(c); user != nil {
-		item.UserId = &user.UserID
+	if err := r.hooks.AfterCreate(ctx, c, dto, &model); err != nil {
+		return err
 	}
 
-	if req.Status == types.PostStatusPublished {
-		now := time.Now()
-		item.PublishedAt = &now
-	}
-
-	return item
-}
-
-func (r *PostResource) createPostWithDependencies(ctx context.Context, item *Post, translations map[string]*PostTranslationContent) error {
-	if err := r.CRUD.Create(ctx, *item); err != nil {
-		return fiber.NewError(500, err.Error())
-	}
-
-	translationService := NewTranslationService(r.DB)
-	var userUUID *uuid.UUID
-	if item.UserId != nil {
-		parsed, err := uuid.Parse(*item.UserId)
-		if err == nil {
-			userUUID = &parsed
+	created, err := r.crud.GetByID(ctx, model.ID)
+	if err == nil {
+		if err := r.hooks.EnrichGetByID(ctx, c, created); err == nil {
+			model = *created
 		}
 	}
 
-	if err := translationService.CreateTranslations(ctx, item.Id, translations, userUUID); err != nil {
-		_ = r.CRUD.Delete(ctx, item.Id)
-		return fiber.NewError(500, "Failed to create translations: "+err.Error())
-	}
-
-	metricsService := NewMetricsService(r.DB)
-	if err := metricsService.InitializeMetrics(ctx, item.Id); err != nil {
-		_ = translationService.DeleteAllTranslations(ctx, item.Id)
-		_ = r.CRUD.Delete(ctx, item.Id)
-		return fiber.NewError(500, "Failed to initialize metrics: "+err.Error())
-	}
-
-	return nil
-}
-
-func (r *PostResource) buildCreateResponse(c *fiber.Ctx, ctx context.Context, item *Post) error {
-	created, err := r.CRUD.GetByID(ctx, item.Id)
+	filtered, err := r.hooks.ApplyRBACFilter(ctx, &model)
 	if err != nil {
-		return r.sendFilteredResponse(c, ctx, item, 201)
+		return response.SendFormatted(c, fiber.StatusCreated, r.converter.ModelToResponseDTO(model))
 	}
 
-	translationService := NewTranslationService(r.DB)
-	translations, err := translationService.ListTranslations(ctx, item.Id)
-	if err == nil && len(translations) > 0 {
-		created.Translations = translations
-	}
-
-	metricsService := NewMetricsService(r.DB)
-	metrics, err := metricsService.GetMetrics(ctx, item.Id)
-	if err == nil {
-		created.Metrics = metrics
-	}
-
-	return r.sendFilteredResponse(c, ctx, created, 201)
-}
-
-func (r *PostResource) sendFilteredResponse(c *fiber.Ctx, ctx context.Context, post *Post, statusCode int) error {
-	filtered, err := r.Voter.FilterRead(ctx, post)
-	if err != nil {
-		return response.SendFormatted(c, statusCode, post)
-	}
-	return response.SendFormatted(c, statusCode, filtered)
+	return response.SendFormatted(c, fiber.StatusCreated, filtered)
 }
 
 func (r *PostResource) Update(c *fiber.Ctx) error {
 	id := c.Params("id")
-
-	var req UpdatePostRequest
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
-	}
-
-	if err := req.Validate(); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": err.Error()})
-	}
-
 	ctx := c.UserContext()
 
-	existing, err := r.CRUD.GetByID(ctx, id)
-	if err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "Not found"})
+	var dto dtos.PostUpdateDTO
+	if err := c.BodyParser(&dto); err != nil {
+		return response.SendError(c, fiber.StatusBadRequest, "invalid request body")
 	}
 
-	if err := r.validateAndApplyUpdates(ctx, existing, &req); err != nil {
+	existing, err := r.crud.GetByID(ctx, id)
+	if crud.IsNotFoundError(err) {
+		return response.SendError(c, fiber.StatusNotFound, "post not found")
+	}
+	if err != nil {
+		return response.SendError(c, fiber.StatusInternalServerError, "database error")
+	}
+
+	model := r.converter.UpdateDTOToModel(dto, existing)
+
+	if err := r.hooks.UpdateHook(c, dto, &model); err != nil {
 		return err
 	}
 
-	if err := r.CRUD.Update(ctx, id, *existing); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	if err := r.crud.Update(ctx, id, model); err != nil {
+		if crud.IsNotFoundError(err) {
+			return response.SendError(c, fiber.StatusNotFound, "post not found")
+		}
+		return response.SendError(c, fiber.StatusInternalServerError, "database error")
 	}
 
-	if err := r.updateTranslations(ctx, id, existing.UserId, req.Translations); err != nil {
+	if err := r.hooks.AfterUpdate(ctx, c, dto, &model); err != nil {
 		return err
 	}
 
-	return r.buildUpdateResponse(c, ctx, id, existing)
-}
-
-func (r *PostResource) validateAndApplyUpdates(ctx context.Context, existing *Post, req *UpdatePostRequest) error {
-	updateItem := *existing
-	if req.Slug != "" {
-		updateItem.Slug = req.Slug
-	}
-	if req.Status != "" {
-		updateItem.Status = req.Status
-		if req.Status == types.PostStatusPublished && updateItem.PublishedAt == nil {
-			now := time.Now()
-			updateItem.PublishedAt = &now
-		}
-	}
-	if req.PublishedAt != nil {
-		updateItem.PublishedAt = req.PublishedAt
-	}
-
-	// Clear read-only fields before RBAC validation
-	updateItem.Id = ""
-	updateItem.CreatedAt = nil
-	updateItem.UpdatedAt = nil
-	updateItem.Metrics = nil
-	updateItem.RemoteSourceID = nil
-	updateItem.RemoteSource = nil
-
-	if err := r.Voter.ValidateWrite(ctx, &updateItem); err != nil {
-		return fiber.NewError(403, err.Error())
-	}
-
-	// Apply validated changes
-	existing.Slug = updateItem.Slug
-	existing.Status = updateItem.Status
-	existing.PublishedAt = updateItem.PublishedAt
-	now := time.Now()
-	existing.UpdatedAt = &now
-
-	return nil
-}
-
-func (r *PostResource) updateTranslations(ctx context.Context, postID string, userID *string, translations map[string]*PostTranslationContent) error {
-	if len(translations) == 0 {
-		return nil
-	}
-
-	translationService := NewTranslationService(r.DB)
-	var userUUID *uuid.UUID
-	if userID != nil {
-		parsed, err := uuid.Parse(*userID)
-		if err == nil {
-			userUUID = &parsed
-		}
-	}
-
-	for locale, translation := range translations {
-		if err := translationService.UpdateTranslation(ctx, postID, locale, translation.Title, translation.Content, userUUID); err != nil {
-			return fiber.NewError(500, "Failed to update translation for locale "+locale+": "+err.Error())
-		}
-	}
-
-	return nil
-}
-
-func (r *PostResource) buildUpdateResponse(c *fiber.Ctx, ctx context.Context, id string, existing *Post) error {
-	updated, err := r.CRUD.GetByID(ctx, id)
-	if err != nil {
-		updated = existing
-	}
-
-	translationService := NewTranslationService(r.DB)
-	translations, err := translationService.ListTranslations(ctx, id)
-	if err == nil && len(translations) > 0 {
-		updated.Translations = translations
-	}
-
-	metricsService := NewMetricsService(r.DB)
-	metrics, err := metricsService.GetMetrics(ctx, id)
+	updated, err := r.crud.GetByID(ctx, id)
 	if err == nil {
-		updated.Metrics = metrics
+		if err := r.hooks.EnrichGetByID(ctx, c, updated); err == nil {
+			model = *updated
+		}
 	}
 
-	filtered, err := r.Voter.FilterRead(ctx, updated)
+	filtered, err := r.hooks.ApplyRBACFilter(ctx, &model)
 	if err != nil {
-		return response.SendFormatted(c, 200, updated)
+		return response.SendFormatted(c, fiber.StatusOK, r.converter.ModelToResponseDTO(model))
 	}
 
-	return response.SendFormatted(c, 200, filtered)
+	return response.SendFormatted(c, fiber.StatusOK, filtered)
 }
 
 func (r *PostResource) Delete(c *fiber.Ctx) error {
 	id := c.Params("id")
-	ctx := c.UserContext()
 
-	// Delete all translations first
-	translationService := NewTranslationService(r.DB)
-	if err := translationService.DeleteAllTranslations(ctx, id); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Failed to delete translations: " + err.Error()})
+	if err := r.hooks.DeleteHook(c, id); err != nil {
+		return err
 	}
 
-	// Delete the post
-	if err := r.CRUD.Delete(ctx, id); err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	if err := r.crud.Delete(c.UserContext(), id); err != nil {
+		if crud.IsNotFoundError(err) {
+			return response.SendError(c, fiber.StatusNotFound, "post not found")
+		}
+		return response.SendError(c, fiber.StatusInternalServerError, "database error")
 	}
 
-	return c.SendStatus(204)
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func createRoleLoader(db database.Database) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		userID, ok := c.Locals("user_id").(string)
+		if !ok || userID == "" {
+			return c.Next()
+		}
+
+		repo := rbac.NewRepository(db)
+		roles, err := repo.GetUserRoles(c.UserContext(), userID)
+
+		if err != nil || len(roles) == 0 {
+			return c.Next()
+		}
+
+		c.Locals("user_roles", roles)
+		return c.Next()
+	}
 }

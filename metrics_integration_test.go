@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/nicolasbonnici/gorest-blog/services"
 	"github.com/nicolasbonnici/gorest-blog/types"
 	"github.com/nicolasbonnici/gorest/database"
 	_ "github.com/nicolasbonnici/gorest/database/sqlite"
@@ -24,8 +25,8 @@ func TestLoadPostsWithTranslationsAndMetrics_Integration(t *testing.T) {
 		t.Fatalf("Failed to create test schema: %v", err)
 	}
 
-	translationService := NewTranslationService(db)
-	metricsService := NewMetricsService(db)
+	translationService := services.NewTranslationService(db)
+	metricsService := services.NewMetricsService(db)
 
 	postID1 := uuid.New().String()
 	postID2 := uuid.New().String()
@@ -104,7 +105,7 @@ func TestLoadPostsWithTranslationsAndMetrics_Integration(t *testing.T) {
 		}
 
 		for _, post := range result.Posts {
-			if post.Id == postID1 {
+			if post.ID == postID1 {
 				if len(post.Translations) != 2 {
 					t.Errorf("Expected 2 translations for post 1, got %d", len(post.Translations))
 				}
@@ -143,7 +144,7 @@ func TestLoadPostsWithTranslationsAndMetrics_Integration(t *testing.T) {
 				}
 			}
 
-			if post.Id == postID2 {
+			if post.ID == postID2 {
 				if len(post.Translations) != 1 {
 					t.Errorf("Expected 1 translation for post 2, got %d", len(post.Translations))
 				}
@@ -177,11 +178,11 @@ func TestLoadPostsWithTranslationsAndMetrics_Integration(t *testing.T) {
 
 		for _, post := range result.Posts {
 			if post.Metrics == nil {
-				t.Errorf("Post %s has nil metrics - metrics not loaded in JOIN query", post.Id)
+				t.Errorf("Post %s has nil metrics - metrics not loaded in JOIN query", post.ID)
 			}
 
 			if len(post.Translations) == 0 {
-				t.Errorf("Post %s has no translations - translations not loaded in JOIN query", post.Id)
+				t.Errorf("Post %s has no translations - translations not loaded in JOIN query", post.ID)
 			}
 		}
 	})
