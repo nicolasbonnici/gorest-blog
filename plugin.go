@@ -10,8 +10,9 @@ import (
 )
 
 type BlogPlugin struct {
-	config Config
-	db     database.Database
+	config     Config
+	db         database.Database
+	authPlugin plugin.Plugin
 }
 
 func NewPlugin() plugin.Plugin {
@@ -42,6 +43,12 @@ func (p *BlogPlugin) Initialize(config map[string]interface{}) error {
 		p.config.EnableImporter = enableImporter
 	}
 
+	if deps, ok := config[plugin.ConfigKeyDependencies].(map[string]plugin.Plugin); ok {
+		if authPlugin, exists := deps["auth"]; exists {
+			p.authPlugin = authPlugin
+		}
+	}
+
 	return nil
 }
 
@@ -56,7 +63,12 @@ func (p *BlogPlugin) SetupEndpoints(app *fiber.App) error {
 		return nil
 	}
 
-	RegisterRoutes(app, p.db, &p.config)
+	var authMiddleware fiber.Handler
+	if p.authPlugin != nil {
+		authMiddleware = p.authPlugin.Handler()
+	}
+
+	RegisterRoutes(app, p.db, &p.config, authMiddleware)
 	return nil
 }
 

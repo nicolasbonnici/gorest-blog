@@ -27,7 +27,7 @@ type PostResource struct {
 	translationService *services.TranslationService
 }
 
-func RegisterPostRoutes(app *fiber.App, db database.Database, config *Config) {
+func RegisterPostRoutes(app *fiber.App, db database.Database, config *Config, authMiddleware fiber.Handler) {
 	rbacConfig := rbac.Config{
 		DefaultPolicy: rbac.DenyAll,
 		SuperuserRole: "admin",
@@ -60,9 +60,9 @@ func RegisterPostRoutes(app *fiber.App, db database.Database, config *Config) {
 
 	app.Get("/posts", res.List)
 	app.Get("/posts/:id", res.Get)
-	app.Post("/posts", loadRoles, rbac.RequireRole(voter, roleProvider, "writer"), res.Create)
-	app.Put("/posts/:id", loadRoles, rbac.RequireRole(voter, roleProvider, "writer", "moderator"), res.Update)
-	app.Delete("/posts/:id", loadRoles, rbac.RequireRole(voter, roleProvider, "writer"), res.Delete)
+	app.Post("/posts", authMiddleware, loadRoles, rbac.RequireRole(voter, roleProvider, "writer"), res.Create)
+	app.Put("/posts/:id", authMiddleware, loadRoles, rbac.RequireRole(voter, roleProvider, "writer", "moderator"), res.Update)
+	app.Delete("/posts/:id", authMiddleware, loadRoles, rbac.RequireRole(voter, roleProvider, "writer"), res.Delete)
 }
 
 func (r *PostResource) List(c *fiber.Ctx) error {
@@ -289,6 +289,11 @@ func createRoleLoader(db database.Database) fiber.Handler {
 		}
 
 		c.Locals("user_roles", roles)
+
+		userCtx := c.UserContext()
+		userCtx = rbac.WithRoles(userCtx, roles)
+		c.SetUserContext(userCtx)
+
 		return c.Next()
 	}
 }
