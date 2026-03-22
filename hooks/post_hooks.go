@@ -61,6 +61,17 @@ func (h *PostHooks) UpdateHook(c *fiber.Ctx, dto dtos.PostUpdateDTO, model *mode
 		return fiber.NewError(400, err.Error())
 	}
 
+	userID, hasUser := c.Locals("user_id").(string)
+	if hasUser && model.UserID != nil {
+		userRoles, _ := c.Locals("user_roles").([]string)
+		isOwner := *model.UserID == userID
+		isModerator := h.hasAnyRole(userRoles, []string{"moderator", "admin"})
+
+		if !isOwner && !isModerator {
+			return fiber.NewError(403, "insufficient permissions: you can only update your own posts")
+		}
+	}
+
 	tempModel := *model
 	tempModel.ID = ""
 	tempModel.UserID = nil
@@ -317,4 +328,15 @@ func (h *PostHooks) rollbackPost(ctx context.Context, postID string) error {
 
 	_, err = h.db.Exec(ctx, sql, args...)
 	return err
+}
+
+func (h *PostHooks) hasAnyRole(userRoles []string, requiredRoles []string) bool {
+	for _, userRole := range userRoles {
+		for _, requiredRole := range requiredRoles {
+			if userRole == requiredRole {
+				return true
+			}
+		}
+	}
+	return false
 }

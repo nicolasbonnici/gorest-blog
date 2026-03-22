@@ -60,9 +60,16 @@ func RegisterPostRoutes(app *fiber.App, db database.Database, config *Config, au
 
 	app.Get("/posts", res.List)
 	app.Get("/posts/:id", res.Get)
-	app.Post("/posts", authMiddleware, loadRoles, rbac.RequireRole(voter, roleProvider, "writer"), res.Create)
-	app.Put("/posts/:id", authMiddleware, loadRoles, rbac.RequireRole(voter, roleProvider, "writer", "moderator"), res.Update)
-	app.Delete("/posts/:id", authMiddleware, loadRoles, rbac.RequireRole(voter, roleProvider, "writer"), res.Delete)
+
+	if authMiddleware != nil {
+		app.Post("/posts", authMiddleware, loadRoles, rbac.RequireRole(voter, roleProvider, "writer"), res.Create)
+		app.Put("/posts/:id", authMiddleware, loadRoles, rbac.RequireRole(voter, roleProvider, "writer", "moderator"), res.Update)
+		app.Delete("/posts/:id", authMiddleware, loadRoles, rbac.RequireRole(voter, roleProvider, "writer"), res.Delete)
+	} else {
+		app.Post("/posts", loadRoles, rbac.RequireRole(voter, roleProvider, "writer"), res.Create)
+		app.Put("/posts/:id", loadRoles, rbac.RequireRole(voter, roleProvider, "writer", "moderator"), res.Update)
+		app.Delete("/posts/:id", loadRoles, rbac.RequireRole(voter, roleProvider, "writer"), res.Delete)
+	}
 }
 
 func (r *PostResource) List(c *fiber.Ctx) error {
