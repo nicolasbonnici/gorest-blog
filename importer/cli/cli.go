@@ -10,6 +10,7 @@ import (
 	"github.com/nicolasbonnici/gorest-blog/importer"
 	"github.com/nicolasbonnici/gorest-blog/importer/engines"
 	_ "github.com/nicolasbonnici/gorest-blog/importer/engines/devto"
+	"github.com/nicolasbonnici/gorest/config"
 	"github.com/nicolasbonnici/gorest/database"
 	_ "github.com/nicolasbonnici/gorest/database/postgres"
 	"github.com/schollz/progressbar/v3"
@@ -75,6 +76,7 @@ func Run(args []string) int {
 	listEngines := fs.Bool("list-engines", false, "List available engines")
 	syncMode := fs.String("sync-mode", "local-wins", "Sync mode: local-wins (bidirectional), remote-wins (import only), import-only (new posts only)")
 	apiKey := fs.String("api-key", "", "API key for remote source (required for pushing changes). Can also use DEVTO_API_KEY env var")
+	configPath := fs.String("config", ".", "Path to gorest.yaml configuration file (default: current directory)")
 
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing flags: %v\n", err)
@@ -92,7 +94,7 @@ func Run(args []string) int {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	db, err := setupDatabase()
+	db, err := setupDatabase(*configPath)
 	if err != nil {
 		return 1
 	}
@@ -145,14 +147,31 @@ func validateFlags(fs *flag.FlagSet, userID, username, articleURL, articleID str
 	return nil
 }
 
-func setupDatabase() (database.Database, error) {
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		fmt.Fprintln(os.Stderr, "Error: DATABASE_URL environment variable is required")
-		return nil, fmt.Errorf("DATABASE_URL not set")
+func setupDatabase(configPath string) (database.Database, error) {
+	// Load GoREST project configuration
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to load gorest.yaml: %v\n", err)
+		return nil, err
 	}
 
-	db, err := database.Open("postgres", databaseURL)
+	if cfg.Database.URL == "" {
+		fmt.Fprintln(os.Stderr, "Error: database.url not configured in gorest.yaml")
+		return nil, fmt.Errorf("database.url not set")
+	}
+
+	// Determine database driver from URL
+	driver := "postgres"
+	if len(cfg.Database.URL) > 0 {
+		switch {
+		case cfg.Database.URL[:6] == "mysql:":
+			driver = "mysql"
+		case cfg.Database.URL[:7] == "sqlite:":
+			driver = "sqlite"
+		}
+	}
+
+	db, err := database.Open(driver, cfg.Database.URL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: failed to connect to database: %v\n", err)
 		return nil, err

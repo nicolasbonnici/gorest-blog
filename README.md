@@ -243,6 +243,18 @@ Authorization: Bearer <token>
 
 The importer CLI allows you to sync posts between your local database and external platforms like dev.to. As of version 0.5+, the importer supports **bidirectional sync**, making your local database the source of truth.
 
+### Configuration
+
+The importer reads database connection details from your `gorest.yaml` project configuration file. By default, it looks for `gorest.yaml` in the current directory, but you can specify a different path using the `--config` flag:
+
+```bash
+# Using gorest.yaml in current directory
+./import --source devto --username yourname --user-id <uuid>
+
+# Using gorest.yaml in a specific directory
+./import --config /path/to/project --source devto --username yourname --user-id <uuid>
+```
+
 ### ⚠️ Breaking Change (v0.5+)
 
 **Default behavior has changed from `remote-wins` to `local-wins`.**
@@ -390,6 +402,7 @@ curl -X POST http://localhost:3000/api/posts \
 | `--url` | Specific article URL to import | Yes* | - |
 | `--id` | Specific article ID to import | Yes* | - |
 | `--user-id` | User ID to assign posts to | Yes | - |
+| `--config` | Path to gorest.yaml configuration file | No | `.` (current directory) |
 | `--sync-mode` | Sync mode: `local-wins`, `remote-wins`, `import-only` | No | `local-wins` |
 | `--api-key` | API key for remote platform (or use `DEVTO_API_KEY` env) | No** | - |
 | `--import-comments` | Import comments along with posts | No | `false` |
@@ -520,6 +533,11 @@ go test ./...
 **Translation Missing**: Empty translations in response
 - Ensure `translatable` plugin is enabled
 - Verify translations were created with POST request
+
+**Importer Error**: `failed to load gorest.yaml`
+- Ensure `gorest.yaml` exists in the current directory or use `--config` to specify the path
+- Verify the YAML syntax is correct
+- Check that `database.url` is properly configured
 
 **Importer Error**: `API key required for pushing changes`
 - Set API key: `export DEVTO_API_KEY=your_key` or use `--api-key` flag
