@@ -135,6 +135,12 @@ build: ## Build verification
 	@go build -v ./...
 	@echo "✓ Build successful"
 
+build-import-cli: ## Build import CLI binary (requires main.go wrapper - see blog project)
+	@echo "⚠️  Note: The import CLI requires a main.go wrapper to set up the service factory."
+	@echo "    Build from the blog project instead: cd ../blog && go build -o bin/import ./cmd/import"
+	@echo ""
+	@echo "    Or use Docker: docker build -t blog:latest . (includes import binary)"
+
 clean: ## Clean build artifacts and caches
 	@echo "Cleaning..."
 	@go clean -cache -testcache -modcache

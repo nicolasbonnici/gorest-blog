@@ -255,6 +255,34 @@ The importer reads database connection details from your `gorest.yaml` project c
 ./import --config /path/to/project --source devto --username yourname --user-id <uuid>
 ```
 
+### Building the Import CLI
+
+The import CLI can be built standalone or included in a Docker image:
+
+**Local Build** (from your blog project):
+```bash
+# Build the import binary
+make build-cli
+
+# Run the import CLI
+./bin/import --source devto --username yourname --user-id <uuid>
+```
+
+**Docker Build** (includes both API and import CLI):
+```bash
+# Build Docker image (includes /app/import binary)
+docker build -t blog:latest .
+
+# Run import CLI from Docker
+docker run --rm -v $(pwd)/gorest.yaml:/app/gorest.yaml blog:latest ./import --source devto --username yourname --user-id <uuid>
+
+# Or with environment variables
+docker run --rm \
+  -v $(pwd)/gorest.yaml:/app/gorest.yaml \
+  -e DEVTO_API_KEY=your_key \
+  blog:latest ./import --source devto --username yourname --user-id <uuid>
+```
+
 ### ⚠️ Breaking Change (v0.5+)
 
 **Default behavior has changed from `remote-wins` to `local-wins`.**
