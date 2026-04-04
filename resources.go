@@ -89,11 +89,15 @@ func (r *PostResource) List(c *fiber.Ctx) error {
 	fieldMap := map[string]string{
 		"id":           "id",
 		"user_id":      "user_id",
+		"userId":       "user_id",
 		"slug":         "slug",
 		"status":       "status",
 		"published_at": "published_at",
+		"publishedAt":  "published_at",
 		"updated_at":   "updated_at",
+		"updatedAt":    "updated_at",
 		"created_at":   "created_at",
+		"createdAt":    "created_at",
 	}
 
 	var conditions []query.Condition
