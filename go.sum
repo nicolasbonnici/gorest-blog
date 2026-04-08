@@ -63,8 +63,8 @@ github.com/nicolasbonnici/gorest v0.4.13 h1:ZBLg1QSFsKZHchT8fxlE9+7OfGcsJ3Nkb9Vh
 github.com/nicolasbonnici/gorest v0.4.13/go.mod h1:QISXGUjTuUU8QF4ymtUAeIXnJgh98b0jFljgOsuQLCQ=
 github.com/nicolasbonnici/gorest-auth v0.1.14 h1:7/5JCFtDDfxRDozUjY4fJZg1HCk4gsNL8UHtb+pzSE4=
 github.com/nicolasbonnici/gorest-auth v0.1.14/go.mod h1:ATWWtS0FYSiG+bFhwRN6hMnxE8wGHvENAokFnYoWBAs=
-github.com/nicolasbonnici/gorest-rbac v0.1.8 h1:Gx6ezlQfS02h+TlyUbYzjP8JmHheYhUdmbdGHoAhuwE=
-github.com/nicolasbonnici/gorest-rbac v0.1.8/go.mod h1:qbls7wsinOnZtjRwRMhOgkXU4zcw8fuZ654txHaroM0=
+github.com/nicolasbonnici/gorest-rbac v0.1.10 h1:8+rH4ggUf20G2oQEKL1zDBBlGUMOMVJAJvnasi1BQGE=
+github.com/nicolasbonnici/gorest-rbac v0.1.10/go.mod h1:ubmNlHyGJ/TAtFh+XLhF3jsg1JJJKK9RJvNMAgwIrCM=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec h1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=
