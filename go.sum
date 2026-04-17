@@ -59,8 +59,8 @@ github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db h1:62I3jR2Em
 github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db/go.mod h1:l0dey0ia/Uv7NcFFVbCLtqEBQbrT4OCwCSKTEv6enCw=
 github.com/ncruces/go-strftime v1.0.0 h1:HMFp8mLCTPp341M/ZnA4qaf7ZlsbTc+miZjCLOFAw7w=
 github.com/ncruces/go-strftime v1.0.0/go.mod h1:Fwc5htZGVVkseilnfgOVb9mKy6w1naJmn9CehxcKcls=
-github.com/nicolasbonnici/gorest v0.4.14 h1:RuHq91AxSR0QakZdYzVCxZJ4UMI+JaG34jwNCVYiC7I=
-github.com/nicolasbonnici/gorest v0.4.14/go.mod h1:tBZLDe6FUwpkUK0R70cNKJYqtOapupH7mDciwGLlYLg=
+github.com/nicolasbonnici/gorest v0.5.0 h1:HaoGCEDhI74NAiqxt+vYfyHTTR6oQNcuMGrzqn3kDD4=
+github.com/nicolasbonnici/gorest v0.5.0/go.mod h1:tBZLDe6FUwpkUK0R70cNKJYqtOapupH7mDciwGLlYLg=
 github.com/nicolasbonnici/gorest-auth v0.1.18 h1:iwNPJaJfci8mMVykKtrEx2j/t9Jlw4BRqq+FOfg62dc=
 github.com/nicolasbonnici/gorest-auth v0.1.18/go.mod h1:m8BuFk4UPe6XccU1qD5hYk9YljvemkPsWU6B7XraJAk=
 github.com/nicolasbonnici/gorest-rbac v0.1.12 h1:FXXpimg32uGl8BfA3wLzs53oomexSaT+3/Ap7jKLSr8=
