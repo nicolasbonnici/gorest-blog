@@ -27,7 +27,7 @@ type PostResource struct {
 	translationService *services.TranslationService
 }
 
-func RegisterPostRoutes(app *fiber.App, db database.Database, config *Config, authMiddleware fiber.Handler) {
+func RegisterPostRoutes(router fiber.Router, db database.Database, config *Config, authMiddleware fiber.Handler) {
 	rbacConfig := rbac.Config{
 		DefaultPolicy: rbac.DenyAll,
 		SuperuserRole: "admin",
@@ -58,17 +58,17 @@ func RegisterPostRoutes(app *fiber.App, db database.Database, config *Config, au
 		translationService: services.NewTranslationService(db),
 	}
 
-	app.Get("/posts", res.List)
-	app.Get("/posts/:id", res.Get)
+	router.Get("/posts", res.List)
+	router.Get("/posts/:id", res.Get)
 
 	if authMiddleware != nil {
-		app.Post("/posts", authMiddleware, loadRoles, rbac.RequireRole(voter, roleProvider, "writer"), res.Create)
-		app.Put("/posts/:id", authMiddleware, loadRoles, rbac.RequireRole(voter, roleProvider, "writer", "moderator"), res.Update)
-		app.Delete("/posts/:id", authMiddleware, loadRoles, rbac.RequireRole(voter, roleProvider, "writer"), res.Delete)
+		router.Post("/posts", authMiddleware, loadRoles, rbac.RequireRole(voter, roleProvider, "writer"), res.Create)
+		router.Put("/posts/:id", authMiddleware, loadRoles, rbac.RequireRole(voter, roleProvider, "writer", "moderator"), res.Update)
+		router.Delete("/posts/:id", authMiddleware, loadRoles, rbac.RequireRole(voter, roleProvider, "writer"), res.Delete)
 	} else {
-		app.Post("/posts", loadRoles, rbac.RequireRole(voter, roleProvider, "writer"), res.Create)
-		app.Put("/posts/:id", loadRoles, rbac.RequireRole(voter, roleProvider, "writer", "moderator"), res.Update)
-		app.Delete("/posts/:id", loadRoles, rbac.RequireRole(voter, roleProvider, "writer"), res.Delete)
+		router.Post("/posts", loadRoles, rbac.RequireRole(voter, roleProvider, "writer"), res.Create)
+		router.Put("/posts/:id", loadRoles, rbac.RequireRole(voter, roleProvider, "writer", "moderator"), res.Update)
+		router.Delete("/posts/:id", loadRoles, rbac.RequireRole(voter, roleProvider, "writer"), res.Delete)
 	}
 }
 

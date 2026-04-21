@@ -6,13 +6,13 @@ import (
 	"github.com/nicolasbonnici/gorest/database"
 )
 
-func RegisterRoutes(app *fiber.App, db database.Database, config *Config, authMiddleware fiber.Handler) {
-	RegisterPostRoutes(app, db, config, authMiddleware)
+func RegisterRoutes(router fiber.Router, db database.Database, config *Config, authMiddleware fiber.Handler) {
+	RegisterPostRoutes(router, db, config, authMiddleware)
 
 	if config.EnableImporter {
 		importer.SetServiceFactory(func(db database.Database, reporter importer.ProgressReporter) importer.ImportService {
 			return NewImporterService(db, reporter)
 		})
-		importer.RegisterRoutes(app, db)
+		importer.RegisterRoutes(router, db)
 	}
 }

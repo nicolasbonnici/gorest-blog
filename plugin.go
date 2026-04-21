@@ -58,7 +58,7 @@ func (p *BlogPlugin) Handler() fiber.Handler {
 	}
 }
 
-func (p *BlogPlugin) SetupEndpoints(app *fiber.App) error {
+func (p *BlogPlugin) SetupEndpoints(router fiber.Router) error {
 	if p.db == nil {
 		return nil
 	}
@@ -68,7 +68,7 @@ func (p *BlogPlugin) SetupEndpoints(app *fiber.App) error {
 		authMiddleware = p.authPlugin.Handler()
 	}
 
-	RegisterRoutes(app, p.db, &p.config, authMiddleware)
+	RegisterRoutes(router, p.db, &p.config, authMiddleware)
 	return nil
 }
 
