@@ -8,7 +8,7 @@ require (
 	github.com/gofiber/fiber/v2 v2.52.12
 	github.com/google/uuid v1.6.0
 	github.com/nicolasbonnici/gorest v0.5.1
-	github.com/nicolasbonnici/gorest-auth v0.1.20
+	github.com/nicolasbonnici/gorest-auth v0.1.21
 	github.com/nicolasbonnici/gorest-rbac v0.1.15
 	github.com/schollz/progressbar/v3 v3.19.0
 )
