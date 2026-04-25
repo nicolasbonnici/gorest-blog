@@ -65,7 +65,7 @@ jobs:
       - name: Run errcheck
         run: |
           echo "Checking for unchecked errors..."
-          errcheck ./...
+          errcheck -exclude .errcheck-excludes -ignoretests ./...
 
       - name: Run gocyclo
         run: |

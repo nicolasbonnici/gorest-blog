@@ -300,7 +300,7 @@ func createRoleLoader(db database.Database, hierarchy map[string][]string) fiber
 		if err != nil {
 			return c.Next()
 		}
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 
 		for rows.Next() {
 			var role string
