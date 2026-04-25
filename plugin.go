@@ -43,12 +43,6 @@ func (p *BlogPlugin) Initialize(config map[string]interface{}) error {
 		p.config.EnableImporter = enableImporter
 	}
 
-	if deps, ok := config[plugin.ConfigKeyDependencies].(map[string]plugin.Plugin); ok {
-		if authPlugin, exists := deps["auth"]; exists {
-			p.authPlugin = authPlugin
-		}
-	}
-
 	return nil
 }
 
@@ -77,11 +71,11 @@ func (p *BlogPlugin) MigrationSource() interface{} {
 }
 
 func (p *BlogPlugin) MigrationDependencies() []string {
-	return []string{"auth", "translatable", "metrics", "rbac"}
+	return []string{"translatable", "metrics"}
 }
 
 func (p *BlogPlugin) Dependencies() []string {
-	return []string{"auth", "translatable", "metrics", "rbac"}
+	return []string{"translatable", "metrics"}
 }
 
 func (p *BlogPlugin) GetOpenAPIResources() []plugin.OpenAPIResource {

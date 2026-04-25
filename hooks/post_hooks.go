@@ -8,14 +8,14 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	auth "github.com/nicolasbonnici/gorest-auth"
 	"github.com/nicolasbonnici/gorest-blog/dtos"
 	"github.com/nicolasbonnici/gorest-blog/models"
 	"github.com/nicolasbonnici/gorest-blog/services"
-	"github.com/nicolasbonnici/gorest-rbac"
+	auth "github.com/nicolasbonnici/gorest/auth"
 	"github.com/nicolasbonnici/gorest/crud"
 	"github.com/nicolasbonnici/gorest/database"
 	"github.com/nicolasbonnici/gorest/query"
+	"github.com/nicolasbonnici/gorest/rbac"
 )
 
 type PostHooks struct {

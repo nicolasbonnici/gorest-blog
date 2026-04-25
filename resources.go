@@ -9,12 +9,12 @@ import (
 	"github.com/nicolasbonnici/gorest-blog/hooks"
 	"github.com/nicolasbonnici/gorest-blog/models"
 	"github.com/nicolasbonnici/gorest-blog/services"
-	"github.com/nicolasbonnici/gorest-rbac"
 	"github.com/nicolasbonnici/gorest/crud"
 	"github.com/nicolasbonnici/gorest/database"
 	"github.com/nicolasbonnici/gorest/filter"
 	"github.com/nicolasbonnici/gorest/pagination"
 	"github.com/nicolasbonnici/gorest/query"
+	"github.com/nicolasbonnici/gorest/rbac"
 	"github.com/nicolasbonnici/gorest/response"
 )
 
@@ -46,8 +46,7 @@ func RegisterPostRoutes(router fiber.Router, db database.Database, config *Confi
 		panic("failed to create RBAC voter: " + err.Error())
 	}
 
-	loadRoles := createRoleLoader(db)
-	roleProvider := rbac.NewFiberRoleProvider("user_roles", "user_id")
+	loadRoles := createRoleLoader(db, rbacConfig.RoleHierarchy)
 
 	res := &PostResource{
 		db:                 db,
@@ -61,14 +60,17 @@ func RegisterPostRoutes(router fiber.Router, db database.Database, config *Confi
 	router.Get("/posts", res.List)
 	router.Get("/posts/:id", res.Get)
 
+	requireWriter := requireRole(rbacConfig.RoleHierarchy, "writer")
+	requireWriterOrModerator := requireAnyRole(rbacConfig.RoleHierarchy, "writer", "moderator")
+
 	if authMiddleware != nil {
-		router.Post("/posts", authMiddleware, loadRoles, rbac.RequireRole(voter, roleProvider, "writer"), res.Create)
-		router.Put("/posts/:id", authMiddleware, loadRoles, rbac.RequireRole(voter, roleProvider, "writer", "moderator"), res.Update)
-		router.Delete("/posts/:id", authMiddleware, loadRoles, rbac.RequireRole(voter, roleProvider, "writer"), res.Delete)
+		router.Post("/posts", authMiddleware, loadRoles, requireWriter, res.Create)
+		router.Put("/posts/:id", authMiddleware, loadRoles, requireWriterOrModerator, res.Update)
+		router.Delete("/posts/:id", authMiddleware, loadRoles, requireWriter, res.Delete)
 	} else {
-		router.Post("/posts", loadRoles, rbac.RequireRole(voter, roleProvider, "writer"), res.Create)
-		router.Put("/posts/:id", loadRoles, rbac.RequireRole(voter, roleProvider, "writer", "moderator"), res.Update)
-		router.Delete("/posts/:id", loadRoles, rbac.RequireRole(voter, roleProvider, "writer"), res.Delete)
+		router.Post("/posts", loadRoles, requireWriter, res.Create)
+		router.Put("/posts/:id", loadRoles, requireWriterOrModerator, res.Update)
+		router.Delete("/posts/:id", loadRoles, requireWriter, res.Delete)
 	}
 }
 
@@ -285,17 +287,30 @@ func (r *PostResource) Delete(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func createRoleLoader(db database.Database) fiber.Handler {
+func createRoleLoader(db database.Database, hierarchy map[string][]string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		userID, ok := c.Locals("user_id").(string)
 		if !ok || userID == "" {
 			return c.Next()
 		}
 
-		repo := rbac.NewRepository(db)
-		roles, err := repo.GetUserRoles(c.UserContext(), userID)
+		var roles []string
+		query := "SELECT role_name FROM user_roles WHERE user_id = $1"
+		rows, err := db.Query(c.UserContext(), query, userID)
+		if err != nil {
+			return c.Next()
+		}
+		defer rows.Close()
 
-		if err != nil || len(roles) == 0 {
+		for rows.Next() {
+			var role string
+			if err := rows.Scan(&role); err != nil {
+				continue
+			}
+			roles = append(roles, role)
+		}
+
+		if len(roles) == 0 {
 			return c.Next()
 		}
 
@@ -306,5 +321,35 @@ func createRoleLoader(db database.Database) fiber.Handler {
 		c.SetUserContext(userCtx)
 
 		return c.Next()
+	}
+}
+
+func requireRole(hierarchy map[string][]string, requiredRole string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		roles, ok := rbac.GetRoles(c.UserContext())
+		if !ok || len(roles) == 0 {
+			return response.SendError(c, fiber.StatusForbidden, "insufficient permissions")
+		}
+
+		if rbac.HasRole(roles, requiredRole, hierarchy) {
+			return c.Next()
+		}
+
+		return response.SendError(c, fiber.StatusForbidden, "insufficient permissions")
+	}
+}
+
+func requireAnyRole(hierarchy map[string][]string, requiredRoles ...string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		roles, ok := rbac.GetRoles(c.UserContext())
+		if !ok || len(roles) == 0 {
+			return response.SendError(c, fiber.StatusForbidden, "insufficient permissions")
+		}
+
+		if rbac.HasAnyRole(roles, requiredRoles, hierarchy) {
+			return c.Next()
+		}
+
+		return response.SendError(c, fiber.StatusForbidden, "insufficient permissions")
 	}
 }
