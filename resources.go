@@ -294,24 +294,31 @@ func createRoleLoader(db database.Database, hierarchy map[string][]string) fiber
 			return c.Next()
 		}
 
-		var roles []string
-		query := "SELECT role_name FROM user_roles WHERE user_id = $1"
-		rows, err := db.Query(c.UserContext(), query, userID)
+		qb := query.New(db.Dialect())
+		sql, args, err := qb.
+			Select("r.name").
+			From("user_roles").
+			As("ur").
+			JoinAs("roles", "r", query.ColEq("ur.role_id", "r.id")).
+			Where(query.Eq("ur.user_id", userID)).
+			Build()
+		if err != nil {
+			return c.Next()
+		}
+
+		rows, err := db.Query(c.UserContext(), sql, args...)
 		if err != nil {
 			return c.Next()
 		}
 		defer func() { _ = rows.Close() }()
 
+		var roles []string
 		for rows.Next() {
 			var role string
 			if err := rows.Scan(&role); err != nil {
 				continue
 			}
 			roles = append(roles, role)
-		}
-
-		if len(roles) == 0 {
-			return c.Next()
 		}
 
 		c.Locals("user_roles", roles)
