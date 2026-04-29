@@ -60,8 +60,8 @@ func RegisterPostRoutes(router fiber.Router, db database.Database, config *Confi
 	router.Get("/posts", res.List)
 	router.Get("/posts/:id", res.Get)
 
-	requireWriter := requireRole(rbacConfig.RoleHierarchy, "writer")
-	requireWriterOrModerator := requireAnyRole(rbacConfig.RoleHierarchy, "writer", "moderator")
+	requireWriter := requireRole(rbacConfig.RoleHierarchy, rbacConfig.SuperuserRole, "writer")
+	requireWriterOrModerator := requireAnyRole(rbacConfig.RoleHierarchy, rbacConfig.SuperuserRole, "writer", "moderator")
 
 	if authMiddleware != nil {
 		router.Post("/posts", authMiddleware, loadRoles, requireWriter, res.Create)
@@ -331,13 +331,21 @@ func createRoleLoader(db database.Database, hierarchy map[string][]string) fiber
 	}
 }
 
-func requireRole(hierarchy map[string][]string, requiredRole string) fiber.Handler {
+func requireRole(hierarchy map[string][]string, superuserRole string, requiredRole string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		roles, ok := rbac.GetRoles(c.UserContext())
 		if !ok || len(roles) == 0 {
 			return response.SendError(c, fiber.StatusForbidden, "insufficient permissions")
 		}
 
+		// Check if user has superuser role
+		for _, role := range roles {
+			if role == superuserRole {
+				return c.Next()
+			}
+		}
+
+		// Check if user has required role (with hierarchy)
 		if rbac.HasRole(roles, requiredRole, hierarchy) {
 			return c.Next()
 		}
@@ -346,13 +354,21 @@ func requireRole(hierarchy map[string][]string, requiredRole string) fiber.Handl
 	}
 }
 
-func requireAnyRole(hierarchy map[string][]string, requiredRoles ...string) fiber.Handler {
+func requireAnyRole(hierarchy map[string][]string, superuserRole string, requiredRoles ...string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		roles, ok := rbac.GetRoles(c.UserContext())
 		if !ok || len(roles) == 0 {
 			return response.SendError(c, fiber.StatusForbidden, "insufficient permissions")
 		}
 
+		// Check if user has superuser role
+		for _, role := range roles {
+			if role == superuserRole {
+				return c.Next()
+			}
+		}
+
+		// Check if user has any of the required roles (with hierarchy)
 		if rbac.HasAnyRole(roles, requiredRoles, hierarchy) {
 			return c.Next()
 		}
