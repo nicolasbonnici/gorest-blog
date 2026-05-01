@@ -72,7 +72,7 @@ func Run(args []string) int {
 	userID := fs.String("user-id", "", "User ID to assign imported posts to (required)")
 	truncate := fs.Bool("truncate", false, "Delete all existing posts before importing")
 	dryRun := fs.Bool("dry-run", false, "Preview import without saving")
-	importComments := fs.Bool("import-comments", false, "Import comments along with posts")
+	importComments := fs.Bool("import-comments", true, "Import comments along with posts")
 	listEngines := fs.Bool("list-engines", false, "List available engines")
 	syncMode := fs.String("sync-mode", "local-wins", "Sync mode: local-wins (bidirectional), remote-wins (import only), import-only (new posts only)")
 	apiKey := fs.String("api-key", "", "API key for remote source (required for pushing changes). Can also use DEVTO_API_KEY env var")
@@ -240,6 +240,9 @@ func printImportSummary(result *importer.ImportResult) {
 	fmt.Printf("  Updated: %d\n", result.Updated)
 	fmt.Printf("  Skipped: %d\n", result.Skipped)
 	fmt.Printf("  Failed: %d\n", result.Failed)
+	if result.CommentsCreated > 0 {
+		fmt.Printf("  Comments imported: %d\n", result.CommentsCreated)
+	}
 
 	if len(result.Errors) > 0 {
 		fmt.Println("\nErrors:")

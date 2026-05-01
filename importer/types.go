@@ -39,12 +39,13 @@ type ImportOptions struct {
 }
 
 type ImportResult struct {
-	TotalFetched int
-	Created      int
-	Updated      int
-	Skipped      int
-	Failed       int
-	Errors       []error
+	TotalFetched    int
+	Created         int
+	Updated         int
+	Skipped         int
+	Failed          int
+	CommentsCreated int
+	Errors          []error
 }
 
 func (r *ImportResult) Success() int {
@@ -52,6 +53,12 @@ func (r *ImportResult) Success() int {
 }
 
 func (r *ImportResult) String() string {
+	if r.CommentsCreated > 0 {
+		return fmt.Sprintf(
+			"Import completed: %d fetched, %d created, %d updated, %d skipped, %d failed, %d comments imported",
+			r.TotalFetched, r.Created, r.Updated, r.Skipped, r.Failed, r.CommentsCreated,
+		)
+	}
 	return fmt.Sprintf(
 		"Import completed: %d fetched, %d created, %d updated, %d skipped, %d failed",
 		r.TotalFetched, r.Created, r.Updated, r.Skipped, r.Failed,

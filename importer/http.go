@@ -11,23 +11,25 @@ import (
 )
 
 type ImportRequest struct {
-	Username   string `json:"username,omitempty"`
-	ArticleURL string `json:"url,omitempty"`
-	ArticleID  string `json:"id,omitempty"`
-	UserID     string `json:"user_id"`
-	Truncate   bool   `json:"truncate,omitempty"`
-	DryRun     bool   `json:"dry_run,omitempty"`
+	Username       string `json:"username,omitempty"`
+	ArticleURL     string `json:"url,omitempty"`
+	ArticleID      string `json:"id,omitempty"`
+	UserID         string `json:"user_id"`
+	Truncate       bool   `json:"truncate,omitempty"`
+	DryRun         bool   `json:"dry_run,omitempty"`
+	ImportComments bool   `json:"import_comments,omitempty"`
 }
 
 type ImportResponse struct {
-	Success      bool     `json:"success"`
-	Message      string   `json:"message"`
-	TotalFetched int      `json:"total_fetched"`
-	Created      int      `json:"created"`
-	Updated      int      `json:"updated"`
-	Skipped      int      `json:"skipped"`
-	Failed       int      `json:"failed"`
-	Errors       []string `json:"errors,omitempty"`
+	Success         bool     `json:"success"`
+	Message         string   `json:"message"`
+	TotalFetched    int      `json:"total_fetched"`
+	Created         int      `json:"created"`
+	Updated         int      `json:"updated"`
+	Skipped         int      `json:"skipped"`
+	Failed          int      `json:"failed"`
+	CommentsCreated int      `json:"comments_created,omitempty"`
+	Errors          []string `json:"errors,omitempty"`
 }
 
 type EngineInfo struct {
@@ -71,13 +73,14 @@ func executeImport(ctx context.Context, db database.Database, engine string, req
 	service := serviceFactory(db, reporter)
 
 	opts := ImportOptions{
-		Source:     engine,
-		UserID:     req.UserID,
-		Username:   req.Username,
-		ArticleURL: req.ArticleURL,
-		ArticleID:  req.ArticleID,
-		Truncate:   req.Truncate,
-		DryRun:     req.DryRun,
+		Source:         engine,
+		UserID:         req.UserID,
+		Username:       req.Username,
+		ArticleURL:     req.ArticleURL,
+		ArticleID:      req.ArticleID,
+		Truncate:       req.Truncate,
+		DryRun:         req.DryRun,
+		ImportComments: req.ImportComments,
 	}
 
 	result, err := service.Import(ctx, opts)
@@ -130,14 +133,15 @@ func handleImport(db database.Database) fiber.Handler {
 		}
 
 		return c.JSON(ImportResponse{
-			Success:      result.Failed == 0,
-			Message:      result.String(),
-			TotalFetched: result.TotalFetched,
-			Created:      result.Created,
-			Updated:      result.Updated,
-			Skipped:      result.Skipped,
-			Failed:       result.Failed,
-			Errors:       errorMessages,
+			Success:         result.Failed == 0,
+			Message:         result.String(),
+			TotalFetched:    result.TotalFetched,
+			Created:         result.Created,
+			Updated:         result.Updated,
+			Skipped:         result.Skipped,
+			Failed:          result.Failed,
+			CommentsCreated: result.CommentsCreated,
+			Errors:          errorMessages,
 		})
 	}
 }

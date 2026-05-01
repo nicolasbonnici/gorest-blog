@@ -369,7 +369,7 @@ func (s *ImporterService) processPosts(ctx context.Context, posts []importer.Pos
 			s.reporter.Update(i+1, fmt.Sprintf("Processing: %s", post.Title))
 		}
 
-		action, err := s.importPost(ctx, post, opts)
+		action, commentsCount, err := s.importPost(ctx, post, opts)
 		if err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, fmt.Errorf("failed to import '%s': %w", post.Title, err))
@@ -380,6 +380,7 @@ func (s *ImporterService) processPosts(ctx context.Context, posts []importer.Pos
 		}
 
 		s.updateResultCounts(result, action)
+		result.CommentsCreated += commentsCount
 
 		select {
 		case <-ctx.Done():
@@ -406,7 +407,7 @@ func (s *ImporterService) updateResultCounts(result *importer.ImportResult, acti
 	}
 }
 
-func (s *ImporterService) importPost(ctx context.Context, post importer.Post, opts importer.ImportOptions) (string, error) {
+func (s *ImporterService) importPost(ctx context.Context, post importer.Post, opts importer.ImportOptions) (string, int, error) {
 	postModel := s.postToModel(post, opts.UserID)
 	defaultLocale := "en"
 
@@ -422,38 +423,38 @@ func (s *ImporterService) importPost(ctx context.Context, post importer.Post, op
 	return s.createNewPost(ctx, postModel, post, defaultLocale, opts)
 }
 
-func (s *ImporterService) handleDryRun(ctx context.Context, slug string) (string, error) {
+func (s *ImporterService) handleDryRun(ctx context.Context, slug string) (string, int, error) {
 	existing, err := s.findBySlug(ctx, slug)
 	if err == nil && existing != nil {
-		return "updated", nil
+		return "updated", 0, nil
 	}
-	return "created", nil
+	return "created", 0, nil
 }
 
-func (s *ImporterService) updateExistingPost(ctx context.Context, existing *models.Post, postModel models.Post, post importer.Post, defaultLocale string, opts importer.ImportOptions) (string, error) {
+func (s *ImporterService) updateExistingPost(ctx context.Context, existing *models.Post, postModel models.Post, post importer.Post, defaultLocale string, opts importer.ImportOptions) (string, int, error) {
 	if err := s.crud.Update(ctx, existing.ID, postModel); err != nil {
-		return "", fmt.Errorf("update failed: %w", err)
+		return "", 0, fmt.Errorf("update failed: %w", err)
 	}
 
 	userUUID := s.parseUserUUID(postModel.UserID)
 	translationService := services.NewTranslationService(s.db)
 	if err := translationService.UpdateTranslation(ctx, existing.ID, defaultLocale, post.Title, post.Content, userUUID); err != nil {
-		return "", fmt.Errorf("failed to update translation: %w", err)
+		return "", 0, fmt.Errorf("failed to update translation: %w", err)
 	}
 
 	metricsService := services.NewMetricsService(s.db)
 	if err := metricsService.SetMetrics(ctx, existing.ID, int64(post.ViewsCount), int64(post.LikesCount), int64(post.CommentsCount)); err != nil {
-		return "", fmt.Errorf("failed to update metrics: %w", err)
+		return "", 0, fmt.Errorf("failed to update metrics: %w", err)
 	}
 
-	s.handleCommentImport(ctx, existing.ID, existing.Slug, post.Comments, opts, metricsService)
+	commentsCount := s.handleCommentImport(ctx, existing.ID, existing.Slug, post.Comments, opts, metricsService)
 
-	return "updated", nil
+	return "updated", commentsCount, nil
 }
 
-func (s *ImporterService) createNewPost(ctx context.Context, postModel models.Post, post importer.Post, defaultLocale string, opts importer.ImportOptions) (string, error) {
+func (s *ImporterService) createNewPost(ctx context.Context, postModel models.Post, post importer.Post, defaultLocale string, opts importer.ImportOptions) (string, int, error) {
 	if err := s.crud.Create(ctx, postModel); err != nil {
-		return "", fmt.Errorf("create failed: %w", err)
+		return "", 0, fmt.Errorf("create failed: %w", err)
 	}
 
 	translations := map[string]*models.PostTranslationContent{
@@ -467,18 +468,18 @@ func (s *ImporterService) createNewPost(ctx context.Context, postModel models.Po
 	translationService := services.NewTranslationService(s.db)
 	if err := translationService.CreateTranslations(ctx, postModel.ID, translations, userUUID); err != nil {
 		_ = s.crud.Delete(ctx, postModel.ID)
-		return "", fmt.Errorf("failed to create translations: %w", err)
+		return "", 0, fmt.Errorf("failed to create translations: %w", err)
 	}
 
 	metricsService := services.NewMetricsService(s.db)
 	if err := metricsService.SetMetrics(ctx, postModel.ID, int64(post.ViewsCount), int64(post.LikesCount), int64(post.CommentsCount)); err != nil {
 		_ = s.crud.Delete(ctx, postModel.ID)
-		return "", fmt.Errorf("failed to set metrics: %w", err)
+		return "", 0, fmt.Errorf("failed to set metrics: %w", err)
 	}
 
-	s.handleCommentImport(ctx, postModel.ID, postModel.Slug, post.Comments, opts, metricsService)
+	commentsCount := s.handleCommentImport(ctx, postModel.ID, postModel.Slug, post.Comments, opts, metricsService)
 
-	return "created", nil
+	return "created", commentsCount, nil
 }
 
 func (s *ImporterService) parseUserUUID(userID *string) *uuid.UUID {
@@ -492,9 +493,9 @@ func (s *ImporterService) parseUserUUID(userID *string) *uuid.UUID {
 	return &parsed
 }
 
-func (s *ImporterService) handleCommentImport(ctx context.Context, postID, slug string, comments []engines.Comment, opts importer.ImportOptions, metricsService *services.MetricsService) {
+func (s *ImporterService) handleCommentImport(ctx context.Context, postID, slug string, comments []engines.Comment, opts importer.ImportOptions, metricsService *services.MetricsService) int {
 	if !opts.ImportComments || len(comments) == 0 {
-		return
+		return 0
 	}
 
 	count, err := s.importComments(ctx, postID, comments, opts.UserID)
@@ -502,7 +503,7 @@ func (s *ImporterService) handleCommentImport(ctx context.Context, postID, slug 
 		if s.reporter != nil {
 			s.reporter.Error(fmt.Errorf("failed to import comments for post %s: %w", slug, err))
 		}
-		return
+		return 0
 	}
 
 	if err := metricsService.SetMetric(ctx, postID, services.MetricNameComments, int64(count)); err != nil {
@@ -510,6 +511,8 @@ func (s *ImporterService) handleCommentImport(ctx context.Context, postID, slug 
 			s.reporter.Error(fmt.Errorf("failed to update comment count metric: %w", err))
 		}
 	}
+
+	return count
 }
 
 func (s *ImporterService) postToModel(post importer.Post, userID string) models.Post {
