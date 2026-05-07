@@ -73,6 +73,7 @@ type DevToArticle struct {
 	ReadingTimeMin  int       `json:"reading_time_minutes"`
 	CommentsCount   int       `json:"comments_count"`
 	PublicReactions int       `json:"public_reactions_count"`
+	Archived        bool      `json:"archived"`
 }
 
 type DevToComment struct {

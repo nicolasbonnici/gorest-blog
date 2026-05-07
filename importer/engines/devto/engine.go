@@ -36,10 +36,22 @@ func (e *Engine) FetchByUsername(ctx context.Context, username string) ([]engine
 	// Fetch full details for each article to get the body_markdown and comments
 	posts := make([]engines.Post, 0, len(devtoArticles))
 	for _, article := range devtoArticles {
+		// Skip archived articles
+		if article.Archived {
+			fmt.Printf("Skipping archived article: %s (ID: %d)\n", article.Title, article.ID)
+			continue
+		}
+
 		fullArticle, err := e.client.GetArticleByID(ctx, article.ID)
 		if err != nil {
 			// Log error but continue with other articles
 			fmt.Printf("Warning: failed to fetch full details for article %d: %v\n", article.ID, err)
+			continue
+		}
+
+		// Double-check archived status in full article (in case it changed)
+		if fullArticle.Archived {
+			fmt.Printf("Skipping archived article: %s (ID: %d)\n", fullArticle.Title, fullArticle.ID)
 			continue
 		}
 
@@ -68,6 +80,11 @@ func (e *Engine) FetchByID(ctx context.Context, id string) (*engines.Post, error
 		return nil, fmt.Errorf("failed to fetch article from dev.to: %w", err)
 	}
 
+	// Skip archived articles
+	if devtoArticle.Archived {
+		return nil, fmt.Errorf("article %d is archived and cannot be imported", articleID)
+	}
+
 	// Fetch comments for this article
 	comments, err := e.client.GetCommentsByArticleID(ctx, articleID)
 	if err != nil {
@@ -84,6 +101,11 @@ func (e *Engine) FetchByURL(ctx context.Context, url string) (*engines.Post, err
 	devtoArticle, err := e.client.GetArticleByURL(ctx, url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch article from dev.to: %w", err)
+	}
+
+	// Skip archived articles
+	if devtoArticle.Archived {
+		return nil, fmt.Errorf("article at %s is archived and cannot be imported", url)
 	}
 
 	// Extract article ID to fetch comments

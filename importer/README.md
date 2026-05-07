@@ -384,6 +384,15 @@ The Dev.to engine uses the public Dev.to API (no API key required for public art
 - `GET https://dev.to/api/articles?username={username}` - Fetch user's articles
 - `GET https://dev.to/api/articles/{id}` - Fetch specific article
 
+### Archived Posts
+
+**Archived posts are automatically skipped during import.** This applies to:
+
+- **Bulk imports** (`--username`): Archived articles are skipped silently with a console message
+- **Single imports** (`--id` or `--url`): Returns an error if the article is archived
+
+This prevents importing outdated or deprecated content from your Dev.to account.
+
 ### Field Mapping
 
 | Dev.to Field | Post Field | Post Model Field |

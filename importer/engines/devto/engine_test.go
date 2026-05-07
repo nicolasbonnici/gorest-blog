@@ -98,3 +98,38 @@ func TestCreateArticlePayload_Draft(t *testing.T) {
 		t.Error("Expected Published to be false for draft")
 	}
 }
+
+func TestDevToArticle_ArchivedField(t *testing.T) {
+	tests := []struct {
+		name     string
+		article  DevToArticle
+		expected bool
+	}{
+		{
+			name: "non-archived article",
+			article: DevToArticle{
+				ID:       123,
+				Title:    "Active Article",
+				Archived: false,
+			},
+			expected: false,
+		},
+		{
+			name: "archived article",
+			article: DevToArticle{
+				ID:       456,
+				Title:    "Archived Article",
+				Archived: true,
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.article.Archived != tt.expected {
+				t.Errorf("Expected Archived=%v, got %v", tt.expected, tt.article.Archived)
+			}
+		})
+	}
+}
