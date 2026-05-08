@@ -206,7 +206,7 @@ func (s *ImporterService) updateRemotePost(ctx context.Context, engine engines.E
 		return
 	}
 
-	if !needsUpdate {
+	if !needsUpdate && !opts.ForceUpdate {
 		result.Skipped++
 		return
 	}
@@ -289,7 +289,7 @@ func (s *ImporterService) syncImportOnly(ctx context.Context, localMap map[strin
 			s.reporter.Update(current, fmt.Sprintf("Checking: %s", remotePost.Title))
 		}
 
-		if _, existsLocal := localMap[slug]; !existsLocal {
+		if localPost, existsLocal := localMap[slug]; !existsLocal {
 			if err := s.importRemotePost(ctx, remotePost, opts); err != nil {
 				result.Errors = append(result.Errors, importer.SyncError{
 					PostSlug:  slug,
@@ -298,6 +298,16 @@ func (s *ImporterService) syncImportOnly(ctx context.Context, localMap map[strin
 				})
 			} else {
 				result.LocalCreated++
+			}
+		} else if opts.ForceUpdate {
+			if err := s.updateFromRemote(ctx, localPost, remotePost, opts); err != nil {
+				result.Errors = append(result.Errors, importer.SyncError{
+					PostSlug:  slug,
+					Operation: "update",
+					Error:     err,
+				})
+			} else {
+				result.LocalUpdated++
 			}
 		} else {
 			result.Skipped++

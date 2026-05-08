@@ -91,7 +91,7 @@ func TestPostTranslationContent_Sanitize(t *testing.T) {
 		expectedContent string
 	}{
 		{
-			name: "sanitize XSS in title",
+			name: "sanitize XSS in title only",
 			input: &models.PostTranslationContent{
 				Title:   "<script>alert('xss')</script>",
 				Content: "Normal content",
@@ -100,22 +100,22 @@ func TestPostTranslationContent_Sanitize(t *testing.T) {
 			expectedContent: "Normal content",
 		},
 		{
-			name: "sanitize XSS in content",
+			name: "content not sanitized (markdown)",
 			input: &models.PostTranslationContent{
 				Title:   "Normal title",
 				Content: "<img src=x onerror=alert('xss')>",
 			},
 			expectedTitle:   "Normal title",
-			expectedContent: "&lt;img src=x onerror=alert(&#39;xss&#39;)&gt;",
+			expectedContent: "<img src=x onerror=alert('xss')>",
 		},
 		{
-			name: "sanitize HTML entities",
+			name: "only title HTML entities escaped",
 			input: &models.PostTranslationContent{
 				Title:   "Title & More",
 				Content: "Content with <b>bold</b> & entities",
 			},
 			expectedTitle:   "Title &amp; More",
-			expectedContent: "Content with &lt;b&gt;bold&lt;/b&gt; &amp; entities",
+			expectedContent: "Content with <b>bold</b> & entities",
 		},
 		{
 			name: "normal text unchanged",

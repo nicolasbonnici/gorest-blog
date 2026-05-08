@@ -36,6 +36,7 @@ type ImportOptions struct {
 	ImportComments bool
 	SyncMode       SyncMode
 	APIKey         string
+	ForceUpdate    bool
 }
 
 type ImportResult struct {
