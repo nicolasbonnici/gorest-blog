@@ -7,13 +7,14 @@ import (
 	"os"
 	"time"
 
-	"github.com/nicolasbonnici/gorest-blog/importer"
-	"github.com/nicolasbonnici/gorest-blog/importer/engines"
-	_ "github.com/nicolasbonnici/gorest-blog/importer/engines/devto"
 	"github.com/nicolasbonnici/gorest/config"
 	"github.com/nicolasbonnici/gorest/database"
 	_ "github.com/nicolasbonnici/gorest/database/postgres"
 	"github.com/schollz/progressbar/v3"
+
+	"github.com/nicolasbonnici/gorest-blog/importer"
+	"github.com/nicolasbonnici/gorest-blog/importer/engines"
+	_ "github.com/nicolasbonnici/gorest-blog/importer/engines/devto"
 )
 
 type CLIProgressReporter struct {
@@ -76,6 +77,7 @@ func Run(args []string) int {
 	listEngines := fs.Bool("list-engines", false, "List available engines")
 	syncMode := fs.String("sync-mode", "local-wins", "Sync mode: local-wins (bidirectional), remote-wins (import only), import-only (new posts only)")
 	apiKey := fs.String("api-key", "", "API key for remote source (required for pushing changes). Can also use DEVTO_API_KEY env var")
+	forceUpdate := fs.Bool("force-update", false, "Force update all posts even if unchanged")
 	configPath := fs.String("config", ".", "Path to gorest.yaml configuration file (default: current directory)")
 
 	if err := fs.Parse(args); err != nil {
@@ -105,8 +107,8 @@ func Run(args []string) int {
 		return 1
 	}
 
-	opts := buildImportOptions(*source, *userID, *username, *articleURL, *articleID, *truncate, *dryRun, *importComments, *syncMode, *apiKey)
-	printImportMode(*dryRun, *truncate, opts.SyncMode)
+	opts := buildImportOptions(*source, *userID, *username, *articleURL, *articleID, *truncate, *dryRun, *importComments, *syncMode, *apiKey, *forceUpdate)
+	printImportMode(*dryRun, *truncate, opts.SyncMode, *forceUpdate)
 
 	result, err := service.Import(ctx, opts)
 	if err != nil {
@@ -191,7 +193,7 @@ func createImporterService(db database.Database) (importer.ImportService, error)
 	return service, nil
 }
 
-func buildImportOptions(source, userID, username, articleURL, articleID string, truncate, dryRun, importComments bool, syncMode, apiKey string) importer.ImportOptions {
+func buildImportOptions(source, userID, username, articleURL, articleID string, truncate, dryRun, importComments bool, syncMode, apiKey string, forceUpdate bool) importer.ImportOptions {
 	actualAPIKey := apiKey
 	if actualAPIKey == "" {
 		actualAPIKey = os.Getenv("DEVTO_API_KEY")
@@ -208,14 +210,19 @@ func buildImportOptions(source, userID, username, articleURL, articleID string, 
 		ImportComments: importComments,
 		SyncMode:       importer.SyncMode(syncMode),
 		APIKey:         actualAPIKey,
+		ForceUpdate:    forceUpdate,
 	}
 }
 
-func printImportMode(dryRun, truncate bool, syncMode importer.SyncMode) {
+func printImportMode(dryRun, truncate bool, syncMode importer.SyncMode, forceUpdate bool) {
 	if dryRun {
 		fmt.Println("Running in DRY-RUN mode - no changes will be saved")
 	} else if truncate {
 		fmt.Println("WARNING: All existing posts will be deleted before importing")
+	}
+
+	if forceUpdate {
+		fmt.Println("Force update mode: All posts will be updated even if unchanged")
 	}
 
 	fmt.Printf("Sync mode: %s\n", syncMode)
@@ -229,7 +236,9 @@ func printImportMode(dryRun, truncate bool, syncMode importer.SyncMode) {
 		fmt.Println("  - Local changes will be overwritten")
 	case importer.SyncModeImportOnly:
 		fmt.Println("  - Will only import new posts")
-		fmt.Println("  - Existing posts will be skipped")
+		if !forceUpdate {
+			fmt.Println("  - Existing posts will be skipped")
+		}
 	}
 }
 

@@ -49,7 +49,8 @@ func (p *PostTranslationContent) Validate() error {
 
 func (p *PostTranslationContent) Sanitize() {
 	p.Title = html.EscapeString(p.Title)
-	p.Content = html.EscapeString(p.Content)
+	// Content is markdown and should NOT be HTML-escaped as it breaks code blocks
+	// and markdown syntax. Markdown renderers handle XSS protection when converting to HTML.
 }
 
 type PostMetrics struct {

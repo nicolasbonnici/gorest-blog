@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
+
 	"github.com/nicolasbonnici/gorest-blog/models"
 )
 

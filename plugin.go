@@ -2,11 +2,12 @@ package blog
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"github.com/nicolasbonnici/gorest/database"
+	"github.com/nicolasbonnici/gorest/plugin"
+
 	"github.com/nicolasbonnici/gorest-blog/dtos"
 	"github.com/nicolasbonnici/gorest-blog/migrations"
 	"github.com/nicolasbonnici/gorest-blog/models"
-	"github.com/nicolasbonnici/gorest/database"
-	"github.com/nicolasbonnici/gorest/plugin"
 )
 
 type BlogPlugin struct {

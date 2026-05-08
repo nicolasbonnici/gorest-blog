@@ -6,8 +6,9 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/nicolasbonnici/gorest-blog/importer/engines"
 	"github.com/nicolasbonnici/gorest/database"
+
+	"github.com/nicolasbonnici/gorest-blog/importer/engines"
 )
 
 type ImportRequest struct {
@@ -18,6 +19,7 @@ type ImportRequest struct {
 	Truncate       bool   `json:"truncate,omitempty"`
 	DryRun         bool   `json:"dry_run,omitempty"`
 	ImportComments bool   `json:"import_comments,omitempty"`
+	ForceUpdate    bool   `json:"force_update,omitempty"`
 }
 
 type ImportResponse struct {
@@ -81,6 +83,7 @@ func executeImport(ctx context.Context, db database.Database, engine string, req
 		Truncate:       req.Truncate,
 		DryRun:         req.DryRun,
 		ImportComments: req.ImportComments,
+		ForceUpdate:    req.ForceUpdate,
 	}
 
 	result, err := service.Import(ctx, opts)

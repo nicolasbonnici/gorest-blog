@@ -8,14 +8,15 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/nicolasbonnici/gorest/crud"
+	"github.com/nicolasbonnici/gorest/database"
+	"github.com/nicolasbonnici/gorest/query"
+
 	"github.com/nicolasbonnici/gorest-blog/importer"
 	"github.com/nicolasbonnici/gorest-blog/importer/engines"
 	"github.com/nicolasbonnici/gorest-blog/models"
 	"github.com/nicolasbonnici/gorest-blog/services"
 	"github.com/nicolasbonnici/gorest-blog/types"
-	"github.com/nicolasbonnici/gorest/crud"
-	"github.com/nicolasbonnici/gorest/database"
-	"github.com/nicolasbonnici/gorest/query"
 )
 
 type ImporterService struct {
@@ -205,7 +206,7 @@ func (s *ImporterService) updateRemotePost(ctx context.Context, engine engines.E
 		return
 	}
 
-	if !needsUpdate {
+	if !needsUpdate && !opts.ForceUpdate {
 		result.Skipped++
 		return
 	}
@@ -288,7 +289,7 @@ func (s *ImporterService) syncImportOnly(ctx context.Context, localMap map[strin
 			s.reporter.Update(current, fmt.Sprintf("Checking: %s", remotePost.Title))
 		}
 
-		if _, existsLocal := localMap[slug]; !existsLocal {
+		if localPost, existsLocal := localMap[slug]; !existsLocal {
 			if err := s.importRemotePost(ctx, remotePost, opts); err != nil {
 				result.Errors = append(result.Errors, importer.SyncError{
 					PostSlug:  slug,
@@ -297,6 +298,16 @@ func (s *ImporterService) syncImportOnly(ctx context.Context, localMap map[strin
 				})
 			} else {
 				result.LocalCreated++
+			}
+		} else if opts.ForceUpdate {
+			if err := s.updateFromRemote(ctx, localPost, remotePost, opts); err != nil {
+				result.Errors = append(result.Errors, importer.SyncError{
+					PostSlug:  slug,
+					Operation: "update",
+					Error:     err,
+				})
+			} else {
+				result.LocalUpdated++
 			}
 		} else {
 			result.Skipped++
@@ -658,71 +669,102 @@ func (s *ImporterService) importComments(ctx context.Context, postID string, com
 	return totalCount, nil
 }
 
-// importComment imports a single comment and recursively imports its children, returns count of imported comments
 func (s *ImporterService) importComment(ctx context.Context, postID string, comment engines.Comment, parentID *string, userID string) (int, error) {
-	// Check if comment already exists (by checking if we have this comment ID already imported)
-	// We'll use a simple check - if it fails to insert due to duplicate, skip it
+	if existingID := s.checkExistingComment(ctx, comment, postID, userID); existingID != nil {
+		return s.importChildComments(ctx, postID, comment.Children, existingID, userID)
+	}
+
 	commentID := uuid.New().String()
-	status := "published" // Default status for imported comments (valid statuses: awaiting, published, moderated, draft)
+	status := "published"
+	createdAt := s.parseCommentCreatedAt(comment.CreatedAt)
 
-	var createdAt *time.Time
-	if comment.CreatedAt != "" {
-		if parsedTime, err := time.Parse("2006-01-02T15:04:05Z07:00", comment.CreatedAt); err == nil {
-			createdAt = &parsedTime
+	count, err := s.insertComment(ctx, commentID, userID, postID, parentID, comment, status, createdAt)
+	if err != nil {
+		return 0, err
+	}
+
+	childCount, err := s.importChildComments(ctx, postID, comment.Children, &commentID, userID)
+	if err != nil {
+		return count, err
+	}
+
+	return count + childCount, nil
+}
+
+func (s *ImporterService) checkExistingComment(ctx context.Context, comment engines.Comment, postID, userID string) *string {
+	if comment.ID == "" {
+		return nil
+	}
+
+	existingID, err := s.findCommentByRemoteSource(ctx, comment.ID, "devto")
+	if err == nil && existingID != nil {
+		return existingID
+	}
+	return nil
+}
+
+func (s *ImporterService) importChildComments(ctx context.Context, postID string, children []engines.Comment, parentID *string, userID string) (int, error) {
+	count := 0
+	for _, child := range children {
+		childCount, err := s.importComment(ctx, postID, child, parentID, userID)
+		if err != nil {
+			return count, fmt.Errorf("failed to import child comment: %w", err)
 		}
+		count += childCount
+	}
+	return count, nil
+}
+
+func (s *ImporterService) parseCommentCreatedAt(createdAtStr string) *time.Time {
+	if createdAtStr == "" {
+		return nil
 	}
 
-	// Insert comment into database
-	var sql string
-	var args []interface{}
-
-	switch s.db.DriverName() {
-	case "postgres":
-		sql = `
-			INSERT INTO comment (id, user_id, commentable_id, commentable, parent_id, content, status, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-			ON CONFLICT (id) DO NOTHING
-		`
-		args = []interface{}{commentID, userID, postID, "post", parentID, comment.Content, status, createdAt}
-	case "mysql":
-		sql = `
-			INSERT IGNORE INTO comment (id, user_id, commentable_id, commentable, parent_id, content, status, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		`
-		args = []interface{}{commentID, userID, postID, "post", parentID, comment.Content, status, createdAt}
-	case "sqlite":
-		sql = `
-			INSERT OR IGNORE INTO comment (id, user_id, commentable_id, commentable, parent_id, content, status, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		`
-		args = []interface{}{commentID, userID, postID, "post", parentID, comment.Content, status, createdAt}
-	default:
-		return 0, fmt.Errorf("unsupported database driver: %s", s.db.DriverName())
+	parsedTime, err := time.Parse("2006-01-02T15:04:05Z07:00", createdAtStr)
+	if err != nil {
+		return nil
 	}
+	return &parsedTime
+}
+
+func (s *ImporterService) insertComment(ctx context.Context, commentID, userID, postID string, parentID *string, comment engines.Comment, status string, createdAt *time.Time) (int, error) {
+	sql, args := s.buildCommentInsertSQL(commentID, userID, postID, parentID, comment, status, createdAt)
 
 	result, err := s.db.Exec(ctx, sql, args...)
 	if err != nil {
 		return 0, fmt.Errorf("failed to insert comment: %w", err)
 	}
 
-	// Count this comment if it was actually inserted
-	count := 0
 	if rowsAffected, err := result.RowsAffected(); err == nil && rowsAffected > 0 {
-		count = 1
+		return 1, nil
 	}
+	return 0, nil
+}
 
-	// Recursively import child comments
-	if len(comment.Children) > 0 {
-		for _, child := range comment.Children {
-			childCount, err := s.importComment(ctx, postID, child, &commentID, userID)
-			if err != nil {
-				return count, fmt.Errorf("failed to import child comment: %w", err)
-			}
-			count += childCount
-		}
+func (s *ImporterService) buildCommentInsertSQL(commentID, userID, postID string, parentID *string, comment engines.Comment, status string, createdAt *time.Time) (string, []interface{}) {
+	args := []interface{}{commentID, userID, postID, "post", parentID, comment.Content, status, comment.ID, "devto", createdAt}
+
+	switch s.db.DriverName() {
+	case "postgres":
+		sql := `
+			INSERT INTO comment (id, user_id, commentable_id, commentable, parent_id, content, status, remote_source_id, remote_source, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			ON CONFLICT (remote_source_id, remote_source) DO NOTHING
+		`
+		return sql, args
+	case "mysql":
+		sql := `
+			INSERT IGNORE INTO comment (id, user_id, commentable_id, commentable, parent_id, content, status, remote_source_id, remote_source, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`
+		return sql, args
+	default: // sqlite or default
+		sql := `
+			INSERT OR IGNORE INTO comment (id, user_id, commentable_id, commentable, parent_id, content, status, remote_source_id, remote_source, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`
+		return sql, args
 	}
-
-	return count, nil
 }
 
 func (s *ImporterService) importRemotePost(ctx context.Context, post importer.Post, opts importer.ImportOptions) error {
@@ -978,4 +1020,34 @@ func (s *ImporterService) getRemoteID(ctx context.Context, postID, source string
 	}
 
 	return *remoteID, nil
+}
+
+func (s *ImporterService) findCommentByRemoteSource(ctx context.Context, remoteSourceID, remoteSource string) (*string, error) {
+	sql, args, err := s.qb.
+		Select("id").
+		From("comment").
+		Where(query.Eq("remote_source_id", remoteSourceID)).
+		Where(query.Eq("remote_source", remoteSource)).
+		Limit(1).
+		Build()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build query: %w", err)
+	}
+
+	rows, err := s.db.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	if !rows.Next() {
+		return nil, nil // Not found
+	}
+
+	var commentID string
+	if err := rows.Scan(&commentID); err != nil {
+		return nil, fmt.Errorf("scan failed: %w", err)
+	}
+
+	return &commentID, nil
 }

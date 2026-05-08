@@ -14,11 +14,18 @@ linters:
     - staticcheck
     - typecheck
     - unused
+    - gofmt        # Auto-fix code formatting
+    - goimports    # Auto-fix import ordering
+    - whitespace   # Auto-fix trailing whitespace
   disable:
     - gocyclo  # We run this separately with custom threshold
     - misspell # We run this separately
 
 linters-settings:
+  gofmt:
+    simplify: true  # Use gofmt -s
+  goimports:
+    local-prefixes: github.com/nicolasbonnici/gorest-blog
   errcheck:
     # Don't check error in defer
     check-blank: false
