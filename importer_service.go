@@ -659,9 +659,7 @@ func (s *ImporterService) importComments(ctx context.Context, postID string, com
 	return totalCount, nil
 }
 
-// importComment imports a single comment and recursively imports its children, returns count of imported comments
 func (s *ImporterService) importComment(ctx context.Context, postID string, comment engines.Comment, parentID *string, userID string) (int, error) {
-	// Check if comment with this remote_source_id already exists
 	if existingID := s.checkExistingComment(ctx, comment, postID, userID); existingID != nil {
 		return s.importChildComments(ctx, postID, comment.Children, existingID, userID)
 	}
@@ -670,13 +668,11 @@ func (s *ImporterService) importComment(ctx context.Context, postID string, comm
 	status := "published"
 	createdAt := s.parseCommentCreatedAt(comment.CreatedAt)
 
-	// Insert comment with remote source tracking
 	count, err := s.insertComment(ctx, commentID, userID, postID, parentID, comment, status, createdAt)
 	if err != nil {
 		return 0, err
 	}
 
-	// Recursively import child comments
 	childCount, err := s.importChildComments(ctx, postID, comment.Children, &commentID, userID)
 	if err != nil {
 		return count, err
@@ -685,7 +681,6 @@ func (s *ImporterService) importComment(ctx context.Context, postID string, comm
 	return count + childCount, nil
 }
 
-// checkExistingComment checks if a comment already exists and returns its ID
 func (s *ImporterService) checkExistingComment(ctx context.Context, comment engines.Comment, postID, userID string) *string {
 	if comment.ID == "" {
 		return nil
@@ -698,7 +693,6 @@ func (s *ImporterService) checkExistingComment(ctx context.Context, comment engi
 	return nil
 }
 
-// importChildComments imports all child comments recursively
 func (s *ImporterService) importChildComments(ctx context.Context, postID string, children []engines.Comment, parentID *string, userID string) (int, error) {
 	count := 0
 	for _, child := range children {
@@ -711,7 +705,6 @@ func (s *ImporterService) importChildComments(ctx context.Context, postID string
 	return count, nil
 }
 
-// parseCommentCreatedAt parses the comment created_at timestamp
 func (s *ImporterService) parseCommentCreatedAt(createdAtStr string) *time.Time {
 	if createdAtStr == "" {
 		return nil
@@ -724,7 +717,6 @@ func (s *ImporterService) parseCommentCreatedAt(createdAtStr string) *time.Time 
 	return &parsedTime
 }
 
-// insertComment inserts a comment into the database
 func (s *ImporterService) insertComment(ctx context.Context, commentID, userID, postID string, parentID *string, comment engines.Comment, status string, createdAt *time.Time) (int, error) {
 	sql, args := s.buildCommentInsertSQL(commentID, userID, postID, parentID, comment, status, createdAt)
 
@@ -739,7 +731,6 @@ func (s *ImporterService) insertComment(ctx context.Context, commentID, userID, 
 	return 0, nil
 }
 
-// buildCommentInsertSQL builds the SQL query and args for inserting a comment
 func (s *ImporterService) buildCommentInsertSQL(commentID, userID, postID string, parentID *string, comment engines.Comment, status string, createdAt *time.Time) (string, []interface{}) {
 	args := []interface{}{commentID, userID, postID, "post", parentID, comment.Content, status, comment.ID, "devto", createdAt}
 
