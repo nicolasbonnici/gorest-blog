@@ -4,11 +4,6 @@ import (
 	"net/url"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/nicolasbonnici/gorest-blog/converters"
-	"github.com/nicolasbonnici/gorest-blog/dtos"
-	"github.com/nicolasbonnici/gorest-blog/hooks"
-	"github.com/nicolasbonnici/gorest-blog/models"
-	"github.com/nicolasbonnici/gorest-blog/services"
 	"github.com/nicolasbonnici/gorest/crud"
 	"github.com/nicolasbonnici/gorest/database"
 	"github.com/nicolasbonnici/gorest/filter"
@@ -16,6 +11,12 @@ import (
 	"github.com/nicolasbonnici/gorest/query"
 	"github.com/nicolasbonnici/gorest/rbac"
 	"github.com/nicolasbonnici/gorest/response"
+
+	"github.com/nicolasbonnici/gorest-blog/converters"
+	"github.com/nicolasbonnici/gorest-blog/dtos"
+	"github.com/nicolasbonnici/gorest-blog/hooks"
+	"github.com/nicolasbonnici/gorest-blog/models"
+	"github.com/nicolasbonnici/gorest-blog/services"
 )
 
 type PostResource struct {

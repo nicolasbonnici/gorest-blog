@@ -19,73 +19,18 @@ jobs:
         with:
           go-version: '1.26.0'
 
-      - name: Download dependencies
-        run: go mod download
-
-      - name: Install quality tools
-        run: |
-          go install honnef.co/go/tools/cmd/staticcheck@latest
-          go install github.com/gordonklaus/ineffassign@latest
-          go install github.com/client9/misspell/cmd/misspell@latest
-          go install github.com/kisielk/errcheck@latest
-          go install github.com/fzipp/gocyclo/cmd/gocyclo@latest
-          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-
-      - name: Run gofmt
-        run: |
-          echo "Checking code formatting with gofmt -s..."
-          UNFORMATTED=$(gofmt -s -l .)
-          if [ -n "$UNFORMATTED" ]; then
-            echo "The following files are not formatted correctly:"
-            echo "$UNFORMATTED"
-            exit 1
-          fi
-          echo "All files are properly formatted"
-
-      - name: Run go vet
-        run: |
-          echo "Running go vet..."
-          go vet ./...
-
-      - name: Run staticcheck
-        run: |
-          echo "Running staticcheck..."
-          staticcheck ./...
-
-      - name: Run ineffassign
-        run: |
-          echo "Checking for ineffectual assignments..."
-          ineffassign ./...
-
-      - name: Run misspell
-        run: |
-          echo "Checking for spelling mistakes..."
-          misspell -error .
-
-      - name: Run errcheck
-        run: |
-          echo "Checking for unchecked errors..."
-          errcheck -exclude .errcheck-excludes -ignoretests ./...
-
-      - name: Run gocyclo
-        run: |
-          echo "Checking cyclomatic complexity (threshold: 15)..."
-          RESULT=$(gocyclo -over 15 . | grep -v '_test.go' | grep -v 'migrations/' || true)
-          if [ -n "$RESULT" ]; then
-            echo "Cyclomatic complexity too high in production code:"
-            echo "$RESULT"
-            exit 1
-          fi
-          echo "Production code complexity is acceptable"
+      - name: Install development tools
+        run: make install
 
       - name: Run golangci-lint
-        run: |
-          echo "Running golangci-lint comprehensive checks..."
-          golangci-lint run
+        run: make lint
+
+      - name: Run comprehensive audit
+        run: make audit
 
       - name: Cleanup
         if: always()
-        run: go clean -cache -testcache -modcache
+        run: make clean
 
   test:
     name: Test
@@ -133,19 +78,14 @@ jobs:
         run: go mod download
 
       - name: Run tests with coverage
-        run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+        run: make coverage
         env:
           POSTGRES_URL: postgres://test:test@localhost:5432/test?sslmode=disable
           MYSQL_URL: test:test@tcp(localhost:3306)/test
 
-      - name: Display coverage
-        run: go tool cover -func=coverage.out
-
       - name: Cleanup
         if: always()
-        run: |
-          go clean -cache -testcache -modcache
-          rm -f coverage.out
+        run: make clean
 
   build:
     name: Build
@@ -162,8 +102,8 @@ jobs:
           go-version: '1.26.0'
 
       - name: Build verification
-        run: go build -v ./...
+        run: make build
 
       - name: Cleanup
         if: always()
-        run: go clean -cache -testcache -modcache
+        run: make clean
