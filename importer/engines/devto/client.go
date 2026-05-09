@@ -13,13 +13,18 @@ import (
 )
 
 const (
-	DefaultBaseURL = "https://dev.to/api"
-	DefaultTimeout = 30 * time.Second
+	DefaultBaseURL        = "https://dev.to/api"
+	DefaultTimeout        = 30 * time.Second
+	DefaultRateLimitDelay = 3 * time.Second
+	MaxRetries            = 3
+	InitialBackoff        = 5 * time.Second
 )
 
 type Client struct {
-	baseURL    string
-	httpClient *http.Client
+	baseURL         string
+	httpClient      *http.Client
+	rateLimitDelay  time.Duration
+	lastRequestTime time.Time
 }
 
 // TagList is a custom type that can unmarshal both string and array from JSON
@@ -100,6 +105,7 @@ func NewClient() *Client {
 		httpClient: &http.Client{
 			Timeout: DefaultTimeout,
 		},
+		rateLimitDelay: DefaultRateLimitDelay,
 	}
 }
 
@@ -109,7 +115,20 @@ func NewClientWithTimeout(timeout time.Duration) *Client {
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
+		rateLimitDelay: DefaultRateLimitDelay,
 	}
+}
+
+func (c *Client) waitForRateLimit() {
+	if c.rateLimitDelay == 0 {
+		return
+	}
+
+	elapsed := time.Since(c.lastRequestTime)
+	if elapsed < c.rateLimitDelay {
+		time.Sleep(c.rateLimitDelay - elapsed)
+	}
+	c.lastRequestTime = time.Now()
 }
 
 func (c *Client) GetArticlesByUsername(ctx context.Context, username string) ([]DevToArticle, error) {
@@ -261,6 +280,8 @@ func (c *Client) UpdateArticle(ctx context.Context, apiKey string, articleID int
 }
 
 func (c *Client) doRequest(ctx context.Context, method, url string, result interface{}) error {
+	c.waitForRateLimit()
+
 	req, err := http.NewRequestWithContext(ctx, method, url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -298,35 +319,63 @@ func (c *Client) doRequestWithBody(ctx context.Context, method, url, apiKey stri
 		return fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, url, strings.NewReader(string(bodyBytes)))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+	backoff := InitialBackoff
+	var lastErr error
+
+	for attempt := 0; attempt <= MaxRetries; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(backoff):
+			}
+			backoff *= 2
+		}
+
+		c.waitForRateLimit()
+
+		req, err := http.NewRequestWithContext(ctx, method, url, strings.NewReader(string(bodyBytes)))
+		if err != nil {
+			return fmt.Errorf("failed to create request: %w", err)
+		}
+
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("User-Agent", "GoREST-Blog-Importer/1.0")
+		req.Header.Set("api-key", apiKey)
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("request failed: %w", err)
+			continue
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+
+		if err != nil {
+			lastErr = fmt.Errorf("failed to read response body: %w", err)
+			continue
+		}
+
+		if resp.StatusCode == http.StatusTooManyRequests {
+			lastErr = fmt.Errorf("rate limited (429), retrying after backoff")
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+			return fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
+		}
+
+		if err := json.Unmarshal(body, result); err != nil {
+			return fmt.Errorf("failed to decode response: %w", err)
+		}
+
+		return nil
 	}
 
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "GoREST-Blog-Importer/1.0")
-	req.Header.Set("api-key", apiKey)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+	if lastErr != nil {
+		return fmt.Errorf("max retries exceeded: %w", lastErr)
 	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	if err := json.Unmarshal(body, result); err != nil {
-		return fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	return nil
+	return fmt.Errorf("max retries exceeded")
 }
