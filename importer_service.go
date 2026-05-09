@@ -3,6 +3,7 @@ package blog
 import (
 	"context"
 	"fmt"
+	"html"
 	"regexp"
 	"strings"
 	"time"
@@ -843,7 +844,7 @@ func (s *ImporterService) pushPostToRemote(ctx context.Context, engine engines.E
 	exportPost := importer.Post{
 		Slug:        localPost.Slug,
 		Title:       defaultTranslation.Title,
-		Content:     defaultTranslation.Content,
+		Content:     html.UnescapeString(defaultTranslation.Content),
 		PublishedAt: publishedAt,
 	}
 
@@ -891,7 +892,7 @@ func (s *ImporterService) hasLocalChanges(ctx context.Context, local *models.Pos
 	if localTrans.Title != remote.Title {
 		return true, nil
 	}
-	if localTrans.Content != remote.Content {
+	if html.UnescapeString(localTrans.Content) != remote.Content {
 		return true, nil
 	}
 
