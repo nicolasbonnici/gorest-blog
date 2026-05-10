@@ -59,8 +59,8 @@ github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db h1:62I3jR2Em
 github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db/go.mod h1:l0dey0ia/Uv7NcFFVbCLtqEBQbrT4OCwCSKTEv6enCw=
 github.com/ncruces/go-strftime v1.0.0 h1:HMFp8mLCTPp341M/ZnA4qaf7ZlsbTc+miZjCLOFAw7w=
 github.com/ncruces/go-strftime v1.0.0/go.mod h1:Fwc5htZGVVkseilnfgOVb9mKy6w1naJmn9CehxcKcls=
-github.com/nicolasbonnici/gorest v0.5.8 h1:RKLBQRKNNUhNFPYpdPjfScwFAjGrhbbUoVP2daFk2Wk=
-github.com/nicolasbonnici/gorest v0.5.8/go.mod h1:VNlrHGEmnq97xWa2vA8eizhpHKqYvkEEN2XTd7lF9RM=
+github.com/nicolasbonnici/gorest v0.5.9 h1:m6GQXzckMW6hWHhQsNjAuQYnIKRZnmB1LLCICCtc4RY=
+github.com/nicolasbonnici/gorest v0.5.9/go.mod h1:VNlrHGEmnq97xWa2vA8eizhpHKqYvkEEN2XTd7lF9RM=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec h1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=

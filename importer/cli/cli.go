@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/nicolasbonnici/gorest/database"
 	_ "github.com/nicolasbonnici/gorest/database/postgres"
 	"github.com/schollz/progressbar/v3"
+	"golang.org/x/term"
 
 	"github.com/nicolasbonnici/gorest-blog/importer"
 	"github.com/nicolasbonnici/gorest-blog/importer/engines"
@@ -18,16 +20,28 @@ import (
 )
 
 type CLIProgressReporter struct {
-	bar *progressbar.ProgressBar
+	bar           *progressbar.ProgressBar
+	lastMessage   string
+	statusPrinted bool
+	isTTY         bool
+	writer        io.Writer
 }
 
 func (r *CLIProgressReporter) Start(total int, message string) {
+	r.writer = os.Stdout
+	r.isTTY = term.IsTerminal(int(os.Stdout.Fd()))
+
 	fmt.Println(message)
-	r.bar = progressbar.NewOptions(total,
+
+	if r.isTTY {
+		fmt.Println()
+	}
+
+	barOptions := []progressbar.Option{
 		progressbar.OptionEnableColorCodes(true),
 		progressbar.OptionShowCount(),
 		progressbar.OptionSetWidth(50),
-		progressbar.OptionSetDescription("[cyan]Importing...[reset]"),
+		progressbar.OptionSetDescription("[cyan]Progress[reset]"),
 		progressbar.OptionSetTheme(progressbar.Theme{
 			Saucer:        "[green]=[reset]",
 			SaucerHead:    "[green]>[reset]",
@@ -35,21 +49,55 @@ func (r *CLIProgressReporter) Start(total int, message string) {
 			BarStart:      "[",
 			BarEnd:        "]",
 		}),
-	)
+		progressbar.OptionSetWriter(r.writer),
+	}
+
+	if r.isTTY {
+		barOptions = append(barOptions, progressbar.OptionClearOnFinish())
+	}
+
+	r.bar = progressbar.NewOptions(total, barOptions...)
+	r.statusPrinted = r.isTTY
 }
 
 func (r *CLIProgressReporter) Update(current int, message string) {
-	if r.bar != nil {
-		r.bar.Describe(fmt.Sprintf("[cyan]%s[reset]", truncate(message, 60)))
-		_ = r.bar.Set(current)
+	if r.bar == nil {
+		return
 	}
+
+	truncatedMsg := truncate(message, 80)
+
+	if r.isTTY {
+		if r.statusPrinted {
+			fmt.Fprint(r.writer, "\033[1A")
+		}
+
+		fmt.Fprint(r.writer, "\033[2K\r")
+		fmt.Fprintf(r.writer, "\033[36m→ %s\033[0m\n", truncatedMsg)
+		r.statusPrinted = true
+	} else {
+		if message != r.lastMessage {
+			fmt.Fprintf(r.writer, "→ %s\n", truncatedMsg)
+		}
+	}
+
+	r.lastMessage = message
+	_ = r.bar.Set(current)
 }
 
 func (r *CLIProgressReporter) Finish(message string) {
 	if r.bar != nil {
 		_ = r.bar.Finish()
 	}
-	fmt.Println("\n" + message)
+
+	if r.isTTY {
+		if r.statusPrinted {
+			fmt.Fprint(r.writer, "\033[1A\033[2K\r")
+		}
+	}
+
+	fmt.Fprintln(r.writer)
+	fmt.Println(message)
 }
 
 func (r *CLIProgressReporter) Error(err error) {
@@ -228,11 +276,11 @@ func printImportMode(dryRun, truncate bool, syncMode importer.SyncMode, forceUpd
 	fmt.Printf("Sync mode: %s\n", syncMode)
 	switch syncMode {
 	case importer.SyncModeLocalWins:
-		fmt.Println("  - Will import new remote posts")
+		fmt.Println("  - Will import new remote posts and comments")
 		fmt.Println("  - Will push local edits to remote")
 		fmt.Println("  - Will create remote posts for local-only posts")
 	case importer.SyncModeRemoteWins:
-		fmt.Println("  - Will import/update from remote")
+		fmt.Println("  - Will import/update posts and comments from remote")
 		fmt.Println("  - Local changes will be overwritten")
 	case importer.SyncModeImportOnly:
 		fmt.Println("  - Will only import new posts")
