@@ -1,10 +1,15 @@
 package blog
 
 import (
+	"context"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/nicolasbonnici/gorest-blog/importer"
+	"github.com/nicolasbonnici/gorest-blog/importer/engines"
 	"github.com/nicolasbonnici/gorest-blog/types"
+	"github.com/nicolasbonnici/gorest/database"
+	_ "github.com/nicolasbonnici/gorest/database/sqlite"
 )
 
 func TestSyncMode_IsValid(t *testing.T) {
@@ -168,5 +173,61 @@ func TestImportOptions_DefaultSyncMode(t *testing.T) {
 
 	if opts.SyncMode != importer.SyncModeLocalWins {
 		t.Errorf("Expected default sync mode to be local-wins, got %s", opts.SyncMode)
+	}
+}
+
+func TestImportComment_HasPublishedStatus(t *testing.T) {
+	ctx := context.Background()
+
+	db, err := database.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	_, err = db.Exec(ctx, `CREATE TABLE comment (
+		id TEXT PRIMARY KEY,
+		user_id TEXT,
+		commentable_id TEXT NOT NULL,
+		commentable TEXT NOT NULL,
+		parent_id TEXT,
+		content TEXT NOT NULL,
+		updated_at TEXT,
+		created_at TEXT NOT NULL DEFAULT (datetime('now')),
+		status TEXT NOT NULL DEFAULT 'awaiting',
+		ip_address TEXT,
+		user_agent TEXT,
+		remote_source_id TEXT,
+		remote_source TEXT
+	)`)
+	if err != nil {
+		t.Fatalf("Failed to create comment table: %v", err)
+	}
+
+	service := NewImporterService(db, nil)
+
+	postID := uuid.New().String()
+	userID := uuid.New().String()
+	comment := engines.Comment{
+		ID:        "devto-comment-999",
+		Content:   "Imported comment from dev.to",
+		CreatedAt: "2024-06-01T10:00:00Z",
+	}
+
+	count, err := service.importComment(ctx, postID, comment, nil, userID)
+	if err != nil {
+		t.Fatalf("importComment failed: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("Expected 1 comment imported, got %d", count)
+	}
+
+	var status string
+	row := db.QueryRow(ctx, "SELECT status FROM comment WHERE commentable_id = ?", postID)
+	if err := row.Scan(&status); err != nil {
+		t.Fatalf("Failed to query imported comment status: %v", err)
+	}
+	if status != "published" {
+		t.Errorf("Expected imported comment status 'published', got %q", status)
 	}
 }

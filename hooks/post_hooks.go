@@ -167,15 +167,14 @@ func (h *PostHooks) EnrichGetByID(ctx context.Context, c *fiber.Ctx, model *mode
 		model.Translations = translations
 	}
 
+	if c.Method() == fiber.MethodGet {
+		_ = h.metricsService.IncrementViews(ctx, model.ID)
+	}
+
 	metrics, err := h.metricsService.GetMetrics(ctx, model.ID)
 	if err == nil {
 		model.Metrics = metrics
 	}
-
-	go func() {
-		bgCtx := context.Background()
-		_ = h.metricsService.IncrementViews(bgCtx, model.ID)
-	}()
 
 	return nil
 }
