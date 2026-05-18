@@ -2,8 +2,12 @@ package blog
 
 import (
 	"github.com/gofiber/fiber/v2"
+	gorestconfig "github.com/nicolasbonnici/gorest/config"
 	"github.com/nicolasbonnici/gorest/database"
 	"github.com/nicolasbonnici/gorest/plugin"
+
+	"github.com/nicolasbonnici/gorest/auth/jwt"
+	authmiddleware "github.com/nicolasbonnici/gorest/auth/middleware"
 
 	"github.com/nicolasbonnici/gorest-blog/dtos"
 	"github.com/nicolasbonnici/gorest-blog/migrations"
@@ -11,9 +15,9 @@ import (
 )
 
 type BlogPlugin struct {
-	config     Config
-	db         database.Database
-	authPlugin plugin.Plugin
+	config         Config
+	db             database.Database
+	authMiddleware fiber.Handler
 }
 
 func NewPlugin() plugin.Plugin {
@@ -44,6 +48,11 @@ func (p *BlogPlugin) Initialize(config map[string]interface{}) error {
 		p.config.EnableImporter = enableImporter
 	}
 
+	if appCfg, ok := config["config"].(*gorestconfig.Config); ok && appCfg.Auth.Enabled && p.db != nil {
+		jwtSvc := jwt.NewService(appCfg.Auth.JWTSecret, appCfg.Auth.JWTTTL)
+		p.authMiddleware = authmiddleware.AuthMiddleware(jwtSvc, p.db)
+	}
+
 	return nil
 }
 
@@ -58,12 +67,7 @@ func (p *BlogPlugin) SetupEndpoints(router fiber.Router) error {
 		return nil
 	}
 
-	var authMiddleware fiber.Handler
-	if p.authPlugin != nil {
-		authMiddleware = p.authPlugin.Handler()
-	}
-
-	RegisterRoutes(router, p.db, &p.config, authMiddleware)
+	RegisterRoutes(router, p.db, &p.config, p.authMiddleware)
 	return nil
 }
 

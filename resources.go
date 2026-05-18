@@ -322,11 +322,12 @@ func createRoleLoader(db database.Database, hierarchy map[string][]string) fiber
 			roles = append(roles, role)
 		}
 
-		c.Locals("user_roles", roles)
-
-		userCtx := c.UserContext()
-		userCtx = rbac.WithRoles(userCtx, roles)
-		c.SetUserContext(userCtx)
+		if len(roles) > 0 {
+			c.Locals("user_roles", roles)
+			userCtx := c.UserContext()
+			userCtx = rbac.WithRoles(userCtx, roles)
+			c.SetUserContext(userCtx)
+		}
 
 		return c.Next()
 	}
