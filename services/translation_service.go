@@ -221,19 +221,10 @@ func (s *TranslationService) ListTranslations(ctx context.Context, postID string
 	return translations, nil
 }
 
-// UpdateTranslation updates an existing translation
 func (s *TranslationService) UpdateTranslation(ctx context.Context, postID, locale, title, content string, userID *uuid.UUID) error {
 	postUUID, err := uuid.Parse(postID)
 	if err != nil {
 		return fmt.Errorf("invalid post ID: %w", err)
-	}
-
-	exists, err := s.translationExists(ctx, postUUID, locale, userID)
-	if err != nil {
-		return fmt.Errorf("failed to verify translation: %w", err)
-	}
-	if !exists {
-		return errors.New("translation not found or access denied")
 	}
 
 	translationContent := &models.PostTranslationContent{
@@ -252,33 +243,57 @@ func (s *TranslationService) UpdateTranslation(ctx context.Context, postID, loca
 		return fmt.Errorf("failed to serialize content: %w", err)
 	}
 
+	exists, err := s.translationExists(ctx, postUUID, locale, nil)
+	if err != nil {
+		return fmt.Errorf("failed to verify translation: %w", err)
+	}
+
 	now := time.Now()
 
+	if exists {
+		sql, args, err := s.qb.
+			Update("translations").
+			Set("content", jsonContent).
+			Set("updated_at", now).
+			Where(
+				query.And(
+					query.Eq("translatable_id", postUUID),
+					query.Eq("translatable", TranslatableTypePost),
+					query.Eq("locale", locale),
+				),
+			).
+			Build()
+		if err != nil {
+			return fmt.Errorf("failed to build update query: %w", err)
+		}
+
+		_, err = s.db.Exec(ctx, sql, args...)
+		if err != nil {
+			return fmt.Errorf("failed to update translation: %w", err)
+		}
+
+		return nil
+	}
+
+	translationID := uuid.New()
+
 	sql, args, err := s.qb.
-		Update("translations").
-		Set("content", jsonContent).
-		Set("updated_at", now).
-		Where(
-			query.And(
-				query.Eq("translatable_id", postUUID),
-				query.Eq("translatable", TranslatableTypePost),
-				query.Eq("locale", locale),
-			),
-		).
+		Insert("translations").
+		Columns("id", "user_id", "translatable_id", "translatable", "locale", "content", "created_at").
+		Values(translationID, userID, postUUID, TranslatableTypePost, locale, jsonContent, now).
 		Build()
 	if err != nil {
-		return fmt.Errorf("failed to build update query: %w", err)
+		return fmt.Errorf("failed to build insert query: %w", err)
 	}
 
 	_, err = s.db.Exec(ctx, sql, args...)
 	if err != nil {
-		return fmt.Errorf("failed to update translation: %w", err)
+		return fmt.Errorf("failed to create translation: %w", err)
 	}
 
 	return nil
 }
 
-// DeleteAllTranslations deletes all translations for a post
 func (s *TranslationService) DeleteAllTranslations(ctx context.Context, postID string) error {
 	postUUID, err := uuid.Parse(postID)
 	if err != nil {
@@ -306,7 +321,6 @@ func (s *TranslationService) DeleteAllTranslations(ctx context.Context, postID s
 	return nil
 }
 
-// DeleteTranslation deletes a translation
 func (s *TranslationService) DeleteTranslation(ctx context.Context, postID, locale string, userID *uuid.UUID) error {
 	postUUID, err := uuid.Parse(postID)
 	if err != nil {
@@ -343,7 +357,6 @@ func (s *TranslationService) DeleteTranslation(ctx context.Context, postID, loca
 	return nil
 }
 
-// postExists checks if a post exists in the database
 func (s *TranslationService) postExists(ctx context.Context, postID uuid.UUID) (bool, error) {
 	sql, args, err := s.qb.
 		Select("id").
@@ -364,7 +377,6 @@ func (s *TranslationService) postExists(ctx context.Context, postID uuid.UUID) (
 	return rows.Next(), nil
 }
 
-// translationExists checks if a translation exists and optionally verifies ownership
 func (s *TranslationService) translationExists(ctx context.Context, postID uuid.UUID, locale string, userID *uuid.UUID) (bool, error) {
 	conditions := []query.Condition{
 		query.Eq("translatable_id", postID),
@@ -566,100 +578,60 @@ func (s *TranslationService) getPostCount(ctx context.Context, conditions []quer
 	return total, nil
 }
 
-// buildJoinQuery constructs a SQL query with JOIN to fetch posts, translations, and metrics
 func (s *TranslationService) buildJoinQuery(limit, offset int, conditions []query.Condition, orderBy []crud.OrderByClause) (string, []interface{}, error) {
-	dialect := s.db.Dialect()
-	args := []interface{}{}
-	argPos := 1
-
-	// Build WHERE clause for subquery
-	whereClauses := []string{}
-	for _, condition := range conditions {
-		condSQL, condArgs, nextParam := condition.ToSQL(dialect, argPos)
-		whereClauses = append(whereClauses, condSQL)
-		args = append(args, condArgs...)
-		argPos = nextParam
+	innerQuery := s.qb.Select("p.id", "p.user_id", "p.slug", "p.status", "p.published_at", "p.updated_at", "p.created_at").
+		From("post").As("p")
+	for _, cond := range conditions {
+		innerQuery = innerQuery.Where(cond)
 	}
-
-	whereClause := ""
-	if len(whereClauses) > 0 {
-		whereClause = " WHERE "
-		for i, clause := range whereClauses {
-			if i > 0 {
-				whereClause += " AND "
-			}
-			whereClause += clause
-		}
-	}
-
-	// Build ORDER BY clause
-	orderClause := ""
 	if len(orderBy) > 0 {
-		orderClause = " ORDER BY "
-		for i, order := range orderBy {
-			if i > 0 {
-				orderClause += ", "
-			}
-			orderClause += order.Column + " " + order.Direction.String()
+		for _, order := range orderBy {
+			innerQuery = innerQuery.OrderBy(order.Column, order.Direction)
 		}
 	} else {
-		orderClause = " ORDER BY p.created_at DESC"
+		innerQuery = innerQuery.OrderBy("p.created_at", query.DESC)
 	}
+	innerQuery = innerQuery.Limit(limit).Offset(offset)
 
-	// Use subquery to limit distinct posts first, then join translations and metrics
-	baseSQL := `SELECT
-		p.id, p.user_id, p.slug, p.status, p.published_at, p.updated_at, p.created_at,
-		t.locale, t.content,
-		m.name, m.value
-	FROM (
-		SELECT id, user_id, slug, status, published_at, updated_at, created_at
-		FROM post p` + whereClause + orderClause + ` ` + dialect.LimitOffset(limit, offset) + `
-	) p
-	LEFT JOIN translations t ON t.translatable_id = p.id AND t.translatable = ` + dialect.Placeholder(argPos)
+	cteBuilder := s.qb.WithCTE("paginated_posts", innerQuery).
+		Select(
+			"p.id", "p.user_id", "p.slug", "p.status",
+			"p.published_at", "p.updated_at", "p.created_at",
+			"t.locale", "t.content",
+			"m.name", "m.value",
+		).
+		From("paginated_posts").
+		As("p").
+		LeftJoinAs("translations", "t", query.And(
+			query.ColEq("t.translatable_id", "p.id"),
+			query.Eq("t.translatable", TranslatableTypePost),
+		)).
+		LeftJoinAs("metrics", "m", query.And(
+			query.ColEq("m.resource_id", "p.id"),
+			query.Eq("m.resource", MetricResourcePost),
+		))
 
-	args = append(args, TranslatableTypePost)
-	argPos++
-
-	baseSQL += `
-	LEFT JOIN metrics m ON m.resource_id = p.id AND m.resource = ` + dialect.Placeholder(argPos)
-
-	args = append(args, MetricResourcePost)
-
-	baseSQL += orderClause
-
-	return baseSQL, args, nil
-}
-
-// buildCountQuery constructs a SQL query to count distinct posts
-func (s *TranslationService) buildCountQuery(conditions []query.Condition) (string, []interface{}, error) {
-	dialect := s.db.Dialect()
-	args := []interface{}{}
-	argPos := 1
-
-	baseSQL := "SELECT COUNT(DISTINCT p.id) FROM post p"
-
-	whereClauses := []string{}
-	for _, condition := range conditions {
-		condSQL, condArgs, nextParam := condition.ToSQL(dialect, argPos)
-		whereClauses = append(whereClauses, condSQL)
-		args = append(args, condArgs...)
-		argPos = nextParam
-	}
-
-	if len(whereClauses) > 0 {
-		baseSQL += " WHERE "
-		for i, clause := range whereClauses {
-			if i > 0 {
-				baseSQL += " AND "
-			}
-			baseSQL += clause
+	if len(orderBy) > 0 {
+		for _, order := range orderBy {
+			cteBuilder = cteBuilder.OrderBy(order.Column, order.Direction)
 		}
+	} else {
+		cteBuilder = cteBuilder.OrderBy("p.created_at", query.DESC)
 	}
 
-	return baseSQL, args, nil
+	return cteBuilder.Build()
 }
 
-// parseTimeValue parses a time value from different database types
+func (s *TranslationService) buildCountQuery(conditions []query.Condition) (string, []interface{}, error) {
+	sb := s.qb.Select().
+		SelectExpr(query.CountDistinct(query.RawExpr("p.id"))).
+		From("post").As("p")
+	for _, cond := range conditions {
+		sb = sb.Where(cond)
+	}
+	return sb.Build()
+}
+
 func parseTimeValue(val interface{}) (*time.Time, error) {
 	if val == nil {
 		return nil, nil
