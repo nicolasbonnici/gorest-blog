@@ -34,6 +34,7 @@ type ImportOptions struct {
 	ArticleURL     string
 	ArticleID      string
 	ImportComments bool
+	CommentsOnly   bool
 	SyncMode       SyncMode
 	APIKey         string
 	ForceUpdate    bool

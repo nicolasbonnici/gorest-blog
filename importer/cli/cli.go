@@ -122,6 +122,7 @@ func Run(args []string) int {
 	truncate := fs.Bool("truncate", false, "Delete all existing posts before importing")
 	dryRun := fs.Bool("dry-run", false, "Preview import without saving")
 	importComments := fs.Bool("import-comments", true, "Import comments along with posts")
+	commentsOnly := fs.Bool("comments-only", false, "Sync comments only, skip post create/update")
 	listEngines := fs.Bool("list-engines", false, "List available engines")
 	syncMode := fs.String("sync-mode", "local-wins", "Sync mode: local-wins (bidirectional), remote-wins (import only), import-only (new posts only)")
 	apiKey := fs.String("api-key", "", "API key for remote source (required for pushing changes). Can also use DEVTO_API_KEY env var")
@@ -155,8 +156,8 @@ func Run(args []string) int {
 		return 1
 	}
 
-	opts := buildImportOptions(*source, *userID, *username, *articleURL, *articleID, *truncate, *dryRun, *importComments, *syncMode, *apiKey, *forceUpdate)
-	printImportMode(*dryRun, *truncate, opts.SyncMode, *forceUpdate)
+	opts := buildImportOptions(*source, *userID, *username, *articleURL, *articleID, *truncate, *dryRun, *importComments, *commentsOnly, *syncMode, *apiKey, *forceUpdate)
+	printImportMode(*dryRun, *truncate, opts.SyncMode, *forceUpdate, *commentsOnly)
 
 	result, err := service.Import(ctx, opts)
 	if err != nil {
@@ -241,7 +242,7 @@ func createImporterService(db database.Database) (importer.ImportService, error)
 	return service, nil
 }
 
-func buildImportOptions(source, userID, username, articleURL, articleID string, truncate, dryRun, importComments bool, syncMode, apiKey string, forceUpdate bool) importer.ImportOptions {
+func buildImportOptions(source, userID, username, articleURL, articleID string, truncate, dryRun, importComments, commentsOnly bool, syncMode, apiKey string, forceUpdate bool) importer.ImportOptions {
 	actualAPIKey := apiKey
 	if actualAPIKey == "" {
 		actualAPIKey = os.Getenv("DEVTO_API_KEY")
@@ -256,13 +257,19 @@ func buildImportOptions(source, userID, username, articleURL, articleID string, 
 		Truncate:       truncate,
 		DryRun:         dryRun,
 		ImportComments: importComments,
+		CommentsOnly:   commentsOnly,
 		SyncMode:       importer.SyncMode(syncMode),
 		APIKey:         actualAPIKey,
 		ForceUpdate:    forceUpdate,
 	}
 }
 
-func printImportMode(dryRun, truncate bool, syncMode importer.SyncMode, forceUpdate bool) {
+func printImportMode(dryRun, truncate bool, syncMode importer.SyncMode, forceUpdate bool, commentsOnly bool) {
+	if commentsOnly {
+		fmt.Println("Comments-only mode: posts will not be created or updated")
+		return
+	}
+
 	if dryRun {
 		fmt.Println("Running in DRY-RUN mode - no changes will be saved")
 	} else if truncate {
