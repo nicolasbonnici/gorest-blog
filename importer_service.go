@@ -794,7 +794,7 @@ func (s *ImporterService) buildCommentInsertSQL(commentID, userID, postID string
 		sql := `
 			INSERT INTO comment (id, user_id, commentable_id, commentable, parent_id, content, status, remote_source_id, remote_source, created_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-			ON CONFLICT (remote_source_id, remote_source) DO NOTHING
+			ON CONFLICT (remote_source_id, remote_source) WHERE remote_source_id IS NOT NULL AND remote_source IS NOT NULL DO NOTHING
 		`
 		return sql, args
 	case "mysql":
