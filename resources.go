@@ -28,7 +28,7 @@ type PostResource struct {
 	translationService *services.TranslationService
 }
 
-func RegisterPostRoutes(router fiber.Router, db database.Database, config *Config, authMiddleware fiber.Handler) {
+func RegisterPostRoutes(router fiber.Router, db database.Database, config *Config, authMiddleware fiber.Handler) *hooks.PostHooks {
 	rbacConfig := rbac.Config{
 		DefaultPolicy: rbac.DenyAll,
 		SuperuserRole: "admin",
@@ -49,10 +49,11 @@ func RegisterPostRoutes(router fiber.Router, db database.Database, config *Confi
 
 	loadRoles := createRoleLoader(db, rbacConfig.RoleHierarchy)
 
+	postHooks := hooks.NewPostHooks(db, voter)
 	res := &PostResource{
 		db:                 db,
 		crud:               crud.New[models.Post](db),
-		hooks:              hooks.NewPostHooks(db, voter),
+		hooks:              postHooks,
 		converter:          &converters.PostConverter{},
 		config:             config,
 		translationService: services.NewTranslationService(db),
@@ -73,6 +74,8 @@ func RegisterPostRoutes(router fiber.Router, db database.Database, config *Confi
 		router.Put("/posts/:id", loadRoles, requireWriterOrModerator, res.Update)
 		router.Delete("/posts/:id", loadRoles, requireWriter, res.Delete)
 	}
+
+	return postHooks
 }
 
 func (r *PostResource) List(c *fiber.Ctx) error {
