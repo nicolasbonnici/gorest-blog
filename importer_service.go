@@ -58,6 +58,11 @@ func (s *ImporterService) Import(ctx context.Context, opts importer.ImportOption
 		return nil, err
 	}
 
+	if opts.CommentsOnly {
+		opts.ImportComments = true
+		return s.processCommentsOnly(ctx, posts, opts)
+	}
+
 	if opts.Truncate && !opts.DryRun {
 		if err := s.truncatePosts(ctx); err != nil {
 			return nil, fmt.Errorf("failed to truncate posts: %w", err)
@@ -364,6 +369,45 @@ func (s *ImporterService) fetchPosts(ctx context.Context, engine engines.Engine,
 	}
 
 	return nil, fmt.Errorf("one of username, url, or id must be provided")
+}
+
+func (s *ImporterService) processCommentsOnly(ctx context.Context, posts []importer.Post, opts importer.ImportOptions) (*importer.ImportResult, error) {
+	result := &importer.ImportResult{
+		TotalFetched: len(posts),
+		Errors:       make([]error, 0),
+	}
+
+	if s.reporter != nil {
+		s.reporter.Start(len(posts), fmt.Sprintf("Syncing comments for %d posts from %s", len(posts), opts.Source))
+	}
+
+	metricsService := services.NewMetricsService(s.db)
+
+	for i, post := range posts {
+		if s.reporter != nil {
+			s.reporter.Update(i+1, fmt.Sprintf("Syncing comments: %s", post.Title))
+		}
+
+		local, err := s.findBySlug(ctx, post.Slug)
+		if err != nil || local == nil {
+			result.Skipped++
+			continue
+		}
+
+		result.CommentsCreated += s.handleCommentImport(ctx, local.ID, local.Slug, post.Comments, opts, metricsService)
+
+		select {
+		case <-ctx.Done():
+			return result, ctx.Err()
+		default:
+		}
+	}
+
+	if s.reporter != nil {
+		s.reporter.Finish(fmt.Sprintf("Comments sync complete: %d imported, %d posts skipped (not found locally)", result.CommentsCreated, result.Skipped))
+	}
+
+	return result, nil
 }
 
 func (s *ImporterService) processPosts(ctx context.Context, posts []importer.Post, opts importer.ImportOptions) (*importer.ImportResult, error) {
@@ -750,7 +794,7 @@ func (s *ImporterService) buildCommentInsertSQL(commentID, userID, postID string
 		sql := `
 			INSERT INTO comment (id, user_id, commentable_id, commentable, parent_id, content, status, remote_source_id, remote_source, created_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-			ON CONFLICT (remote_source_id, remote_source) DO NOTHING
+			ON CONFLICT (remote_source_id, remote_source) WHERE remote_source_id IS NOT NULL AND remote_source IS NOT NULL DO NOTHING
 		`
 		return sql, args
 	case "mysql":
