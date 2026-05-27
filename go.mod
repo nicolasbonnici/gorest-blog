@@ -7,7 +7,8 @@ toolchain go1.26.0
 require (
 	github.com/gofiber/fiber/v2 v2.52.13
 	github.com/google/uuid v1.6.0
-	github.com/nicolasbonnici/gorest v0.5.14
+	github.com/nicolasbonnici/gorest v0.5.15
+	github.com/nicolasbonnici/gorest-ai v0.2.1
 	github.com/schollz/progressbar/v3 v3.19.0
 	golang.org/x/term v0.43.0
 )
@@ -41,7 +42,7 @@ require (
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	modernc.org/libc v1.72.4 // indirect
+	modernc.org/libc v1.72.5 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 	modernc.org/sqlite v1.50.1 // indirect

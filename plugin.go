@@ -9,7 +9,10 @@ import (
 	"github.com/nicolasbonnici/gorest/auth/jwt"
 	authmiddleware "github.com/nicolasbonnici/gorest/auth/middleware"
 
+	ai "github.com/nicolasbonnici/gorest-ai"
+
 	"github.com/nicolasbonnici/gorest-blog/dtos"
+	"github.com/nicolasbonnici/gorest-blog/hooks"
 	"github.com/nicolasbonnici/gorest-blog/migrations"
 	"github.com/nicolasbonnici/gorest-blog/models"
 )
@@ -18,6 +21,7 @@ type BlogPlugin struct {
 	config         Config
 	db             database.Database
 	authMiddleware fiber.Handler
+	postHooks      *hooks.PostHooks
 }
 
 func NewPlugin() plugin.Plugin {
@@ -67,8 +71,14 @@ func (p *BlogPlugin) SetupEndpoints(router fiber.Router) error {
 		return nil
 	}
 
-	RegisterRoutes(router, p.db, &p.config, p.authMiddleware)
+	p.postHooks = RegisterRoutes(router, p.db, &p.config, p.authMiddleware)
 	return nil
+}
+
+func (p *BlogPlugin) SetAutoTranslator(at *ai.AutoTranslator) {
+	if p.postHooks != nil {
+		p.postHooks.SetAutoTranslator(at)
+	}
 }
 
 func (p *BlogPlugin) MigrationSource() interface{} {

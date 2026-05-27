@@ -14,6 +14,8 @@ import (
 	"github.com/nicolasbonnici/gorest/query"
 	"github.com/nicolasbonnici/gorest/rbac"
 
+	ai "github.com/nicolasbonnici/gorest-ai"
+
 	"github.com/nicolasbonnici/gorest-blog/dtos"
 	"github.com/nicolasbonnici/gorest-blog/models"
 	"github.com/nicolasbonnici/gorest-blog/services"
@@ -24,6 +26,7 @@ type PostHooks struct {
 	voter              rbac.Voter
 	translationService *services.TranslationService
 	metricsService     *services.MetricsService
+	autoTranslator     *ai.AutoTranslator
 }
 
 func NewPostHooks(db database.Database, voter rbac.Voter) *PostHooks {
@@ -33,6 +36,10 @@ func NewPostHooks(db database.Database, voter rbac.Voter) *PostHooks {
 		translationService: services.NewTranslationService(db),
 		metricsService:     services.NewMetricsService(db),
 	}
+}
+
+func (h *PostHooks) SetAutoTranslator(at *ai.AutoTranslator) {
+	h.autoTranslator = at
 }
 
 func (h *PostHooks) CreateHook(c *fiber.Ctx, dto dtos.PostCreateDTO, model *models.Post) error {
@@ -132,6 +139,10 @@ func (h *PostHooks) AfterCreate(ctx context.Context, c *fiber.Ctx, dto dtos.Post
 		_ = h.translationService.DeleteAllTranslations(ctx, model.ID)
 		_ = h.rollbackPost(ctx, model.ID)
 		return fiber.NewError(500, "failed to initialize metrics: "+err.Error())
+	}
+
+	if h.autoTranslator != nil {
+		h.autoTranslator.TranslateAsync(ctx, services.TranslatableTypePost, model.ID, userUUID)
 	}
 
 	return nil
