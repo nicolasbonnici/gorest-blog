@@ -2,7 +2,7 @@ module github.com/nicolasbonnici/gorest-blog
 
 go 1.26
 
-toolchain go1.26.0
+toolchain go1.26.3
 
 require (
 	github.com/gofiber/fiber/v2 v2.52.13
