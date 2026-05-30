@@ -53,7 +53,7 @@ jobs:
           - 5432:5432
 
       mysql:
-        image: mysql:8
+        image: mysql:9
         env:
           MYSQL_ROOT_PASSWORD: test
           MYSQL_DATABASE: test
