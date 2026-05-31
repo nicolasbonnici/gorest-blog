@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/nicolasbonnici/gorest/database"
 
 	"github.com/nicolasbonnici/gorest-blog/importer/engines"
@@ -95,7 +95,7 @@ func executeImport(ctx context.Context, db database.Database, engine string, req
 }
 
 func handleImport(db database.Database) fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		engine := c.Params("engine")
 		if engine == "" {
 			return c.Status(fiber.StatusBadRequest).JSON(ImportResponse{
@@ -112,7 +112,7 @@ func handleImport(db database.Database) fiber.Handler {
 		}
 
 		var req ImportRequest
-		if err := c.BodyParser(&req); err != nil {
+		if err := c.Bind().Body(&req); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(ImportResponse{
 				Success: false,
 				Message: fmt.Sprintf("Invalid request body: %v", err),
@@ -150,7 +150,7 @@ func handleImport(db database.Database) fiber.Handler {
 }
 
 func handleListEngines() fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		engineNames := engines.List()
 		engineInfos := make([]EngineInfo, 0, len(engineNames))
 		for _, name := range engineNames {

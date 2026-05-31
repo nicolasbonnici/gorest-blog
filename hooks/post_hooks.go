@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
 	auth "github.com/nicolasbonnici/gorest/auth"
 	"github.com/nicolasbonnici/gorest/crud"
@@ -42,7 +42,7 @@ func (h *PostHooks) SetAutoTranslator(at *ai.AutoTranslator) {
 	h.autoTranslator = at
 }
 
-func (h *PostHooks) CreateHook(c *fiber.Ctx, dto dtos.PostCreateDTO, model *models.Post) error {
+func (h *PostHooks) CreateHook(c fiber.Ctx, dto dtos.PostCreateDTO, model *models.Post) error {
 	if err := h.validateCreateDTO(dto); err != nil {
 		return fiber.NewError(400, err.Error())
 	}
@@ -57,14 +57,14 @@ func (h *PostHooks) CreateHook(c *fiber.Ctx, dto dtos.PostCreateDTO, model *mode
 	tempModel.RemoteSourceID = nil
 	tempModel.RemoteSource = nil
 
-	if err := h.voter.ValidateWrite(c.UserContext(), &tempModel); err != nil {
+	if err := h.voter.ValidateWrite(c.Context(), &tempModel); err != nil {
 		return fiber.NewError(403, fmt.Sprintf("insufficient permissions: %v", err))
 	}
 
 	return nil
 }
 
-func (h *PostHooks) UpdateHook(c *fiber.Ctx, dto dtos.PostUpdateDTO, model *models.Post) error {
+func (h *PostHooks) UpdateHook(c fiber.Ctx, dto dtos.PostUpdateDTO, model *models.Post) error {
 	if err := h.validateUpdateDTO(dto); err != nil {
 		return fiber.NewError(400, err.Error())
 	}
@@ -89,20 +89,20 @@ func (h *PostHooks) UpdateHook(c *fiber.Ctx, dto dtos.PostUpdateDTO, model *mode
 	tempModel.RemoteSourceID = nil
 	tempModel.RemoteSource = nil
 
-	if err := h.voter.ValidateWrite(c.UserContext(), &tempModel); err != nil {
+	if err := h.voter.ValidateWrite(c.Context(), &tempModel); err != nil {
 		return fiber.NewError(403, err.Error())
 	}
 
 	return nil
 }
 
-func (h *PostHooks) DeleteHook(c *fiber.Ctx, id any) error {
+func (h *PostHooks) DeleteHook(c fiber.Ctx, id any) error {
 	postID, ok := id.(string)
 	if !ok {
 		return fiber.NewError(400, "invalid post ID")
 	}
 
-	ctx := c.UserContext()
+	ctx := c.Context()
 
 	if err := h.translationService.DeleteAllTranslations(ctx, postID); err != nil {
 		return fiber.NewError(500, "failed to delete translations: "+err.Error())
@@ -111,15 +111,15 @@ func (h *PostHooks) DeleteHook(c *fiber.Ctx, id any) error {
 	return nil
 }
 
-func (h *PostHooks) GetByIDHook(c *fiber.Ctx, id any) error {
+func (h *PostHooks) GetByIDHook(c fiber.Ctx, id any) error {
 	return nil
 }
 
-func (h *PostHooks) GetAllHook(c *fiber.Ctx, conditions *[]query.Condition, orderBy *[]crud.OrderByClause) error {
+func (h *PostHooks) GetAllHook(c fiber.Ctx, conditions *[]query.Condition, orderBy *[]crud.OrderByClause) error {
 	return nil
 }
 
-func (h *PostHooks) AfterCreate(ctx context.Context, c *fiber.Ctx, dto dtos.PostCreateDTO, model *models.Post) error {
+func (h *PostHooks) AfterCreate(ctx context.Context, c fiber.Ctx, dto dtos.PostCreateDTO, model *models.Post) error {
 	modelTranslations := h.convertDTOTranslations(dto.Translations)
 
 	var userUUID *uuid.UUID
@@ -148,7 +148,7 @@ func (h *PostHooks) AfterCreate(ctx context.Context, c *fiber.Ctx, dto dtos.Post
 	return nil
 }
 
-func (h *PostHooks) AfterUpdate(ctx context.Context, c *fiber.Ctx, dto dtos.PostUpdateDTO, model *models.Post) error {
+func (h *PostHooks) AfterUpdate(ctx context.Context, c fiber.Ctx, dto dtos.PostUpdateDTO, model *models.Post) error {
 	if len(dto.Translations) == 0 {
 		return nil
 	}
@@ -172,7 +172,7 @@ func (h *PostHooks) AfterUpdate(ctx context.Context, c *fiber.Ctx, dto dtos.Post
 	return nil
 }
 
-func (h *PostHooks) EnrichGetByID(ctx context.Context, c *fiber.Ctx, model *models.Post) error {
+func (h *PostHooks) EnrichGetByID(ctx context.Context, c fiber.Ctx, model *models.Post) error {
 	translations, err := h.translationService.ListTranslations(ctx, model.ID)
 	if err == nil && len(translations) > 0 {
 		model.Translations = translations
@@ -190,7 +190,7 @@ func (h *PostHooks) EnrichGetByID(ctx context.Context, c *fiber.Ctx, model *mode
 	return nil
 }
 
-func (h *PostHooks) EnrichGetAll(ctx context.Context, c *fiber.Ctx, models []*models.Post) error {
+func (h *PostHooks) EnrichGetAll(ctx context.Context, c fiber.Ctx, models []*models.Post) error {
 	for _, model := range models {
 		translations, err := h.translationService.ListTranslations(ctx, model.ID)
 		if err == nil && len(translations) > 0 {
@@ -303,7 +303,7 @@ func (h *PostHooks) sanitizeTranslation(translation *dtos.PostTranslationContent
 	translation.Content = modelTranslation.Content
 }
 
-func (h *PostHooks) enrichCreateModel(c *fiber.Ctx, model *models.Post) error {
+func (h *PostHooks) enrichCreateModel(c fiber.Ctx, model *models.Post) error {
 	if user := auth.GetAuthenticatedUser(c); user != nil {
 		model.UserID = &user.UserID
 	}

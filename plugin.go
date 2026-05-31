@@ -1,7 +1,7 @@
 package blog
 
 import (
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	gorestconfig "github.com/nicolasbonnici/gorest/config"
 	"github.com/nicolasbonnici/gorest/database"
 	"github.com/nicolasbonnici/gorest/plugin"
@@ -61,7 +61,7 @@ func (p *BlogPlugin) Initialize(config map[string]interface{}) error {
 }
 
 func (p *BlogPlugin) Handler() fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		return c.Next()
 	}
 }

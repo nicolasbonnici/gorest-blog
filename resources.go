@@ -3,7 +3,7 @@ package blog
 import (
 	"net/url"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/nicolasbonnici/gorest/crud"
 	"github.com/nicolasbonnici/gorest/database"
 	"github.com/nicolasbonnici/gorest/filter"
@@ -78,7 +78,7 @@ func RegisterPostRoutes(router fiber.Router, db database.Database, config *Confi
 	return postHooks
 }
 
-func (r *PostResource) List(c *fiber.Ctx) error {
+func (r *PostResource) List(c fiber.Ctx) error {
 	limit := pagination.ParseIntQuery(c, "limit", r.config.PaginationLimit, r.config.MaxPaginationLimit)
 	page := pagination.ParseIntQuery(c, "page", 1, 10000)
 	if page < 1 {
@@ -88,7 +88,7 @@ func (r *PostResource) List(c *fiber.Ctx) error {
 	includeCount := c.Query("count", "true") != "false"
 
 	queryParams := make(url.Values)
-	for key, value := range c.Context().QueryArgs().All() {
+	for key, value := range c.Request().URI().QueryArgs().All() {
 		queryParams.Add(string(key), string(value))
 	}
 
@@ -132,7 +132,7 @@ func (r *PostResource) List(c *fiber.Ctx) error {
 		return err
 	}
 
-	ctx := c.UserContext()
+	ctx := c.Context()
 	result, err := r.translationService.LoadPostsWithTranslations(ctx, limit, offset, includeCount, conditions, orderBy)
 	if err != nil {
 		return response.SendError(c, fiber.StatusInternalServerError, err.Error())
@@ -155,9 +155,9 @@ func (r *PostResource) List(c *fiber.Ctx) error {
 	return pagination.SendHydraCollection(c, items, result.Total, limit, page, r.config.PaginationLimit)
 }
 
-func (r *PostResource) Get(c *fiber.Ctx) error {
+func (r *PostResource) Get(c fiber.Ctx) error {
 	id := c.Params("id")
-	ctx := c.UserContext()
+	ctx := c.Context()
 
 	if err := r.hooks.GetByIDHook(c, id); err != nil {
 		return err
@@ -183,13 +183,13 @@ func (r *PostResource) Get(c *fiber.Ctx) error {
 	return response.SendFormatted(c, fiber.StatusOK, filtered)
 }
 
-func (r *PostResource) Create(c *fiber.Ctx) error {
+func (r *PostResource) Create(c fiber.Ctx) error {
 	var dto dtos.PostCreateDTO
-	if err := c.BodyParser(&dto); err != nil {
+	if err := c.Bind().Body(&dto); err != nil {
 		return response.SendError(c, fiber.StatusBadRequest, "invalid request body")
 	}
 
-	ctx := c.UserContext()
+	ctx := c.Context()
 
 	var userID *string
 	if uid, ok := c.Locals("user_id").(string); ok && uid != "" {
@@ -225,12 +225,12 @@ func (r *PostResource) Create(c *fiber.Ctx) error {
 	return response.SendFormatted(c, fiber.StatusCreated, filtered)
 }
 
-func (r *PostResource) Update(c *fiber.Ctx) error {
+func (r *PostResource) Update(c fiber.Ctx) error {
 	id := c.Params("id")
-	ctx := c.UserContext()
+	ctx := c.Context()
 
 	var dto dtos.PostUpdateDTO
-	if err := c.BodyParser(&dto); err != nil {
+	if err := c.Bind().Body(&dto); err != nil {
 		return response.SendError(c, fiber.StatusBadRequest, "invalid request body")
 	}
 
@@ -274,14 +274,14 @@ func (r *PostResource) Update(c *fiber.Ctx) error {
 	return response.SendFormatted(c, fiber.StatusOK, filtered)
 }
 
-func (r *PostResource) Delete(c *fiber.Ctx) error {
+func (r *PostResource) Delete(c fiber.Ctx) error {
 	id := c.Params("id")
 
 	if err := r.hooks.DeleteHook(c, id); err != nil {
 		return err
 	}
 
-	if err := r.crud.Delete(c.UserContext(), id); err != nil {
+	if err := r.crud.Delete(c.Context(), id); err != nil {
 		if crud.IsNotFoundError(err) {
 			return response.SendError(c, fiber.StatusNotFound, "post not found")
 		}
@@ -292,7 +292,7 @@ func (r *PostResource) Delete(c *fiber.Ctx) error {
 }
 
 func createRoleLoader(db database.Database, hierarchy map[string][]string) fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		userID, ok := c.Locals("user_id").(string)
 		if !ok || userID == "" {
 			return c.Next()
@@ -310,7 +310,7 @@ func createRoleLoader(db database.Database, hierarchy map[string][]string) fiber
 			return c.Next()
 		}
 
-		rows, err := db.Query(c.UserContext(), sql, args...)
+		rows, err := db.Query(c.Context(), sql, args...)
 		if err != nil {
 			return c.Next()
 		}
@@ -327,9 +327,9 @@ func createRoleLoader(db database.Database, hierarchy map[string][]string) fiber
 
 		if len(roles) > 0 {
 			c.Locals("user_roles", roles)
-			userCtx := c.UserContext()
+			userCtx := c.Context()
 			userCtx = rbac.WithRoles(userCtx, roles)
-			c.SetUserContext(userCtx)
+			c.SetContext(userCtx)
 		}
 
 		return c.Next()
@@ -337,8 +337,8 @@ func createRoleLoader(db database.Database, hierarchy map[string][]string) fiber
 }
 
 func requireRole(hierarchy map[string][]string, superuserRole string, requiredRole string) fiber.Handler {
-	return func(c *fiber.Ctx) error {
-		roles, ok := rbac.GetRoles(c.UserContext())
+	return func(c fiber.Ctx) error {
+		roles, ok := rbac.GetRoles(c.Context())
 		if !ok || len(roles) == 0 {
 			return response.SendError(c, fiber.StatusForbidden, "insufficient permissions")
 		}
@@ -360,8 +360,8 @@ func requireRole(hierarchy map[string][]string, superuserRole string, requiredRo
 }
 
 func requireAnyRole(hierarchy map[string][]string, superuserRole string, requiredRoles ...string) fiber.Handler {
-	return func(c *fiber.Ctx) error {
-		roles, ok := rbac.GetRoles(c.UserContext())
+	return func(c fiber.Ctx) error {
+		roles, ok := rbac.GetRoles(c.Context())
 		if !ok || len(roles) == 0 {
 			return response.SendError(c, fiber.StatusForbidden, "insufficient permissions")
 		}
