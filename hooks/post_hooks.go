@@ -22,9 +22,7 @@ import (
 	"github.com/nicolasbonnici/gorest-blog/services"
 )
 
-// PostResourceType is the value used in the taxonomy `resource` column when
-// associating categories and tags with a post. It must match the
-// `taxonomy.allowed_types` entry configured in gorest.yaml.
+// Must match an entry in taxonomy.allowed_types in gorest.yaml.
 const PostResourceType = "post"
 
 type PostHooks struct {
@@ -152,9 +150,7 @@ func (h *PostHooks) GetAllHook(c fiber.Ctx, conditions *[]query.Condition, order
 	return nil
 }
 
-// postIDInCondition builds a `post.id IN (...)` predicate. When the slug
-// matches no associations, return a condition that excludes everything so
-// the response is an empty list rather than the full collection.
+// Empty slug match returns an unsatisfiable condition so the response is an empty list, not the full collection.
 func postIDInCondition(ids []uuid.UUID) query.Condition {
 	if len(ids) == 0 {
 		return query.Eq("id", "00000000-0000-0000-0000-000000000000")
@@ -257,9 +253,7 @@ func (h *PostHooks) EnrichGetAll(ctx context.Context, c fiber.Ctx, models []*mod
 	return nil
 }
 
-// enrichTaxonomy populates Categories and Tags on the model when the taxonomy
-// service is available. Errors are swallowed: a missing taxonomy lookup must
-// never block a Post response (the plugin must remain optional).
+// Errors are swallowed so a missing/broken taxonomy lookup never blocks a Post response.
 func (h *PostHooks) enrichTaxonomy(ctx context.Context, model *models.Post) {
 	if h.taxonomyService == nil || model.ID == "" {
 		return
