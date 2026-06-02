@@ -10,6 +10,7 @@ import (
 	authmiddleware "github.com/nicolasbonnici/gorest/auth/middleware"
 
 	ai "github.com/nicolasbonnici/gorest-ai"
+	taxonomy "github.com/nicolasbonnici/gorest-taxonomy"
 
 	"github.com/nicolasbonnici/gorest-blog/dtos"
 	"github.com/nicolasbonnici/gorest-blog/hooks"
@@ -18,10 +19,11 @@ import (
 )
 
 type BlogPlugin struct {
-	config         Config
-	db             database.Database
-	authMiddleware fiber.Handler
-	postHooks      *hooks.PostHooks
+	config          Config
+	db              database.Database
+	authMiddleware  fiber.Handler
+	postHooks       *hooks.PostHooks
+	taxonomyService *taxonomy.TaxonomyService
 }
 
 func NewPlugin() plugin.Plugin {
@@ -57,6 +59,14 @@ func (p *BlogPlugin) Initialize(config map[string]interface{}) error {
 		p.authMiddleware = authmiddleware.AuthMiddleware(jwtSvc, p.db)
 	}
 
+	if deps, ok := config[plugin.ConfigKeyDependencies].(map[string]plugin.Plugin); ok {
+		if taxPlugin, ok := deps["taxonomy"]; ok {
+			if provider, ok := taxPlugin.(taxonomy.ServiceProvider); ok {
+				p.taxonomyService = provider.GetService()
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -72,6 +82,9 @@ func (p *BlogPlugin) SetupEndpoints(router fiber.Router) error {
 	}
 
 	p.postHooks = RegisterRoutes(router, p.db, &p.config, p.authMiddleware)
+	if p.taxonomyService != nil {
+		p.postHooks.SetTaxonomyService(p.taxonomyService)
+	}
 	return nil
 }
 
@@ -90,7 +103,7 @@ func (p *BlogPlugin) MigrationDependencies() []string {
 }
 
 func (p *BlogPlugin) Dependencies() []string {
-	return []string{"translatable", "metrics"}
+	return []string{"translatable", "metrics", "taxonomy"}
 }
 
 func (p *BlogPlugin) GetOpenAPIResources() []plugin.OpenAPIResource {
