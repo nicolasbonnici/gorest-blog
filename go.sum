@@ -67,8 +67,8 @@ github.com/nicolasbonnici/gorest v0.5.16 h1:4JtLVUWlzDXNej0OTN3dF8+zL/NGkTbvOU5U
 github.com/nicolasbonnici/gorest v0.5.16/go.mod h1:AB3FYT5uP/+J9sXrXHHDaYion58Hea8XiMEp80hgV+0=
 github.com/nicolasbonnici/gorest-ai v0.2.3 h1:uMGSN61yCOFJNkRdRTZYa/nb0mn6ZZx1aAgfK5yNvDk=
 github.com/nicolasbonnici/gorest-ai v0.2.3/go.mod h1:F2PrM/5dLOwn1RQmTh/2Uo/bkHRd/xgYZfhkA0BoOsg=
-github.com/nicolasbonnici/gorest-taxonomy v0.2.3 h1:ShJCgg55PcSX0b35Qt0UpAI+uIze3uP80ffnnpF0wRY=
-github.com/nicolasbonnici/gorest-taxonomy v0.2.3/go.mod h1:zEc1xUXfpAmQ6mJ8XqrLvqSrdOPrd4225Gogl1bUB9o=
+github.com/nicolasbonnici/gorest-taxonomy v0.2.4 h1:a2bWguaWBUyWoezqVjNdqW1PL4oHqKMW6uSeg3pY6Y4=
+github.com/nicolasbonnici/gorest-taxonomy v0.2.4/go.mod h1:ds6TeESxrxzl4sS19IJm0zUKcKXXIfWyi2Bzd4mfFPY=
 github.com/philhofer/fwd v1.2.0 h1:e6DnBTl7vGY+Gz322/ASL4Gyp1FspeMvx1RNDoToZuM=
 github.com/philhofer/fwd v1.2.0/go.mod h1:RqIHx9QI14HlwKwm98g9Re5prTQ6LdeRQn+gXJFxsJM=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
