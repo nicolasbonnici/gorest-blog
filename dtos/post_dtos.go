@@ -3,6 +3,8 @@ package dtos
 import (
 	"time"
 
+	taxonomy "github.com/nicolasbonnici/gorest-taxonomy"
+
 	"github.com/nicolasbonnici/gorest-blog/types"
 )
 
@@ -45,4 +47,6 @@ type PostResponseDTO struct {
 	CreatedAt      *time.Time                            `json:"createdAt,omitempty"`
 	Translations   map[string]*PostTranslationContentDTO `json:"translations,omitempty"`
 	Metrics        *PostMetricsDTO                       `json:"metrics,omitempty"`
+	Categories     []taxonomy.CategoryResponseDTO        `json:"categories,omitempty"`
+	Tags           []taxonomy.TagResponseDTO             `json:"tags,omitempty"`
 }

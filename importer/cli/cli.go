@@ -69,15 +69,15 @@ func (r *CLIProgressReporter) Update(current int, message string) {
 
 	if r.isTTY {
 		if r.statusPrinted {
-			fmt.Fprint(r.writer, "\033[1A")
+			_, _ = fmt.Fprint(r.writer, "\033[1A")
 		}
 
-		fmt.Fprint(r.writer, "\033[2K\r")
-		fmt.Fprintf(r.writer, "\033[36m→ %s\033[0m\n", truncatedMsg)
+		_, _ = fmt.Fprint(r.writer, "\033[2K\r")
+		_, _ = fmt.Fprintf(r.writer, "\033[36m→ %s\033[0m\n", truncatedMsg)
 		r.statusPrinted = true
 	} else {
 		if message != r.lastMessage {
-			fmt.Fprintf(r.writer, "→ %s\n", truncatedMsg)
+			_, _ = fmt.Fprintf(r.writer, "→ %s\n", truncatedMsg)
 		}
 	}
 
@@ -92,11 +92,11 @@ func (r *CLIProgressReporter) Finish(message string) {
 
 	if r.isTTY {
 		if r.statusPrinted {
-			fmt.Fprint(r.writer, "\033[1A\033[2K\r")
+			_, _ = fmt.Fprint(r.writer, "\033[1A\033[2K\r")
 		}
 	}
 
-	fmt.Fprintln(r.writer)
+	_, _ = fmt.Fprintln(r.writer)
 	fmt.Println(message)
 }
 

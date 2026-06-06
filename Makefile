@@ -63,15 +63,16 @@ coverage: ## Run tests with coverage
 	@echo "To view HTML coverage report, run:"
 	@echo "  go tool cover -html=coverage.out"
 
-lint: ## Run linter
+lint: ## Run linter (CI parity: GOWORK=off — resolves deps from go.mod, not workspace)
 	@echo "Running golangci-lint..."
-	@$$(go env GOPATH)/bin/golangci-lint run ./...
+	@GOWORK=off $$(go env GOPATH)/bin/golangci-lint run ./...
 
-lint-fix: ## Run linter with auto-fix
+lint-fix: ## Run linter with auto-fix (CI parity: GOWORK=off)
 	@echo "Running golangci-lint with auto-fix..."
-	@$$(go env GOPATH)/bin/golangci-lint run --fix ./...
+	@GOWORK=off $$(go env GOPATH)/bin/golangci-lint run --fix ./...
 
-audit: ## Run all Go Report Card quality checks (gofmt, vet, staticcheck, etc.)
+audit: export GOWORK := off
+audit: ## Run all Go Report Card quality checks (gofmt, vet, staticcheck, etc.) — CI parity (GOWORK=off)
 	@echo "========================================"
 	@echo "  Go Report Card Quality Checks"
 	@echo "========================================"

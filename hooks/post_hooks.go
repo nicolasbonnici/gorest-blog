@@ -15,11 +15,15 @@ import (
 	"github.com/nicolasbonnici/gorest/rbac"
 
 	ai "github.com/nicolasbonnici/gorest-ai"
+	taxonomy "github.com/nicolasbonnici/gorest-taxonomy"
 
 	"github.com/nicolasbonnici/gorest-blog/dtos"
 	"github.com/nicolasbonnici/gorest-blog/models"
 	"github.com/nicolasbonnici/gorest-blog/services"
 )
+
+// Must match an entry in taxonomy.allowed_types in gorest.yaml.
+const PostResourceType = "post"
 
 type PostHooks struct {
 	db                 database.Database
@@ -27,6 +31,7 @@ type PostHooks struct {
 	translationService *services.TranslationService
 	metricsService     *services.MetricsService
 	autoTranslator     *ai.AutoTranslator
+	taxonomyService    *taxonomy.TaxonomyService
 }
 
 func NewPostHooks(db database.Database, voter rbac.Voter) *PostHooks {
@@ -40,6 +45,10 @@ func NewPostHooks(db database.Database, voter rbac.Voter) *PostHooks {
 
 func (h *PostHooks) SetAutoTranslator(at *ai.AutoTranslator) {
 	h.autoTranslator = at
+}
+
+func (h *PostHooks) SetTaxonomyService(svc *taxonomy.TaxonomyService) {
+	h.taxonomyService = svc
 }
 
 func (h *PostHooks) CreateHook(c fiber.Ctx, dto dtos.PostCreateDTO, model *models.Post) error {
@@ -116,7 +125,41 @@ func (h *PostHooks) GetByIDHook(c fiber.Ctx, id any) error {
 }
 
 func (h *PostHooks) GetAllHook(c fiber.Ctx, conditions *[]query.Condition, orderBy *[]crud.OrderByClause) error {
+	if h.taxonomyService == nil {
+		return nil
+	}
+
+	ctx := c.Context()
+
+	if slug := strings.TrimSpace(c.Query("category")); slug != "" {
+		ids, err := h.taxonomyService.GetResourceIDsByCategorySlug(ctx, PostResourceType, slug)
+		if err != nil {
+			return fiber.NewError(500, "failed to resolve category filter")
+		}
+		*conditions = append(*conditions, postIDInCondition(ids))
+	}
+
+	if slug := strings.TrimSpace(c.Query("tag")); slug != "" {
+		ids, err := h.taxonomyService.GetResourceIDsByTagSlug(ctx, PostResourceType, slug)
+		if err != nil {
+			return fiber.NewError(500, "failed to resolve tag filter")
+		}
+		*conditions = append(*conditions, postIDInCondition(ids))
+	}
+
 	return nil
+}
+
+// Empty slug match returns an unsatisfiable condition so the response is an empty list, not the full collection.
+func postIDInCondition(ids []uuid.UUID) query.Condition {
+	if len(ids) == 0 {
+		return query.Eq("id", "00000000-0000-0000-0000-000000000000")
+	}
+	values := make([]any, len(ids))
+	for i, id := range ids {
+		values[i] = id.String()
+	}
+	return query.In("id", values...)
 }
 
 func (h *PostHooks) AfterCreate(ctx context.Context, c fiber.Ctx, dto dtos.PostCreateDTO, model *models.Post) error {
@@ -187,6 +230,8 @@ func (h *PostHooks) EnrichGetByID(ctx context.Context, c fiber.Ctx, model *model
 		model.Metrics = metrics
 	}
 
+	h.enrichTaxonomy(ctx, model)
+
 	return nil
 }
 
@@ -201,9 +246,31 @@ func (h *PostHooks) EnrichGetAll(ctx context.Context, c fiber.Ctx, models []*mod
 		if err == nil {
 			model.Metrics = metrics
 		}
+
+		h.enrichTaxonomy(ctx, model)
 	}
 
 	return nil
+}
+
+// Errors are swallowed so a missing/broken taxonomy lookup never blocks a Post response.
+func (h *PostHooks) enrichTaxonomy(ctx context.Context, model *models.Post) {
+	if h.taxonomyService == nil || model.ID == "" {
+		return
+	}
+
+	postID, err := uuid.Parse(model.ID)
+	if err != nil {
+		return
+	}
+
+	if cats, err := h.taxonomyService.GetCategoriesForResource(ctx, PostResourceType, postID); err == nil {
+		model.Categories = cats
+	}
+
+	if tags, err := h.taxonomyService.GetTagsForResource(ctx, PostResourceType, postID); err == nil {
+		model.Tags = tags
+	}
 }
 
 func (h *PostHooks) ApplyRBACFilter(ctx context.Context, model *models.Post) (interface{}, error) {

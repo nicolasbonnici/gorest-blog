@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	taxonomy "github.com/nicolasbonnici/gorest-taxonomy"
+
 	"github.com/nicolasbonnici/gorest-blog/types"
 )
 
@@ -21,6 +23,8 @@ type Post struct {
 	CreatedAt      *time.Time                         `json:"createdAt,omitempty" db:"created_at"`
 	Translations   map[string]*PostTranslationContent `json:"translations,omitempty" db:"-"`
 	Metrics        *PostMetrics                       `json:"metrics,omitempty" db:"-"`
+	Categories     []taxonomy.Category                `json:"categories,omitempty" db:"-"`
+	Tags           []taxonomy.Tag                     `json:"tags,omitempty" db:"-"`
 }
 
 func (Post) TableName() string {

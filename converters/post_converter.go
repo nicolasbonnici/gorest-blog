@@ -5,6 +5,8 @@ import (
 
 	"github.com/google/uuid"
 
+	taxonomy "github.com/nicolasbonnici/gorest-taxonomy"
+
 	"github.com/nicolasbonnici/gorest-blog/dtos"
 	"github.com/nicolasbonnici/gorest-blog/models"
 	"github.com/nicolasbonnici/gorest-blog/types"
@@ -85,6 +87,16 @@ func (c *PostConverter) ModelToResponseDTO(model models.Post) dtos.PostResponseD
 			UpdatedAt: model.Metrics.UpdatedAt,
 			CreatedAt: model.Metrics.CreatedAt,
 		}
+	}
+
+	if len(model.Categories) > 0 {
+		catConv := &taxonomy.CategoryConverter{}
+		dto.Categories = catConv.ModelsToResponseDTOs(model.Categories)
+	}
+
+	if len(model.Tags) > 0 {
+		tagConv := &taxonomy.TagConverter{}
+		dto.Tags = tagConv.ModelsToResponseDTOs(model.Tags)
 	}
 
 	return dto
