@@ -171,6 +171,10 @@ func (r *PostResource) Get(c fiber.Ctx) error {
 		return response.SendError(c, fiber.StatusInternalServerError, "database error")
 	}
 
+	if err := r.hooks.CheckReadAccess(c, item); err != nil {
+		return err
+	}
+
 	if err := r.hooks.EnrichGetByID(ctx, c, item); err != nil {
 		return response.SendError(c, fiber.StatusInternalServerError, "failed to enrich post")
 	}

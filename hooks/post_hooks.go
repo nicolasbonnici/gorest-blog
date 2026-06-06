@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
@@ -20,6 +21,7 @@ import (
 	"github.com/nicolasbonnici/gorest-blog/dtos"
 	"github.com/nicolasbonnici/gorest-blog/models"
 	"github.com/nicolasbonnici/gorest-blog/services"
+	"github.com/nicolasbonnici/gorest-blog/types"
 )
 
 // Must match an entry in taxonomy.allowed_types in gorest.yaml.
@@ -124,12 +126,38 @@ func (h *PostHooks) GetByIDHook(c fiber.Ctx, id any) error {
 	return nil
 }
 
+// CheckReadAccess returns a 404 fiber error when an unprivileged caller tries to
+// read a draft or scheduled post. 404 (not 403) avoids leaking the post's existence.
+func (h *PostHooks) CheckReadAccess(c fiber.Ctx, model *models.Post) error {
+	return h.checkReadAccessForCtx(c.Context(), model)
+}
+
+func (h *PostHooks) checkReadAccessForCtx(ctx context.Context, model *models.Post) error {
+	if h.isPrivilegedReader(ctx) {
+		return nil
+	}
+	if model.Status != types.PostStatusPublished {
+		return fiber.NewError(fiber.StatusNotFound, "post not found")
+	}
+	if model.PublishedAt == nil || model.PublishedAt.After(time.Now()) {
+		return fiber.NewError(fiber.StatusNotFound, "post not found")
+	}
+	return nil
+}
+
 func (h *PostHooks) GetAllHook(c fiber.Ctx, conditions *[]query.Condition, orderBy *[]crud.OrderByClause) error {
+	ctx := c.Context()
+
+	if !h.isPrivilegedReader(ctx) {
+		*conditions = append(*conditions,
+			query.Eq("status", string(types.PostStatusPublished)),
+			query.Lte("published_at", time.Now()),
+		)
+	}
+
 	if h.taxonomyService == nil {
 		return nil
 	}
-
-	ctx := c.Context()
 
 	if slug := strings.TrimSpace(c.Query("category")); slug != "" {
 		ids, err := h.taxonomyService.GetResourceIDsByCategorySlug(ctx, PostResourceType, slug)
@@ -148,6 +176,16 @@ func (h *PostHooks) GetAllHook(c fiber.Ctx, conditions *[]query.Condition, order
 	}
 
 	return nil
+}
+
+// isPrivilegedReader is true for roles that may see drafts and scheduled posts.
+// Mirrors the flat (non-hierarchical) check used elsewhere in this file.
+func (h *PostHooks) isPrivilegedReader(ctx context.Context) bool {
+	roles, ok := rbac.GetRoles(ctx)
+	if !ok || len(roles) == 0 {
+		return false
+	}
+	return h.hasAnyRole(roles, []string{"writer", "moderator", "admin"})
 }
 
 // Empty slug match returns an unsatisfiable condition so the response is an empty list, not the full collection.
