@@ -17,13 +17,14 @@ linters:
     - gofmt        # Auto-fix code formatting
     - goimports    # Auto-fix import ordering
     - whitespace   # Auto-fix trailing whitespace
-  disable:
-    - gocyclo  # We run this separately with custom threshold
-    - misspell # We run this separately
+    - misspell
+    - gocyclo
 
 linters-settings:
   gofmt:
-    simplify: true  # Use gofmt -s
+    simplify: true
+  gocyclo:
+    min-complexity: 45
   goimports:
     local-prefixes: github.com/nicolasbonnici/gorest-blog
   errcheck:
