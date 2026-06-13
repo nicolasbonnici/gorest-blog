@@ -59,20 +59,22 @@ func RegisterPostRoutes(router fiber.Router, db database.Database, config *Confi
 		translationService: services.NewTranslationService(db),
 	}
 
-	router.Get("/posts", res.List)
-	router.Get("/posts/:id", res.Get)
-
+	requireAuth := requireAuthenticated()
 	requireWriter := requireRole(rbacConfig.RoleHierarchy, rbacConfig.SuperuserRole, "writer")
 	requireWriterOrModerator := requireAnyRole(rbacConfig.RoleHierarchy, rbacConfig.SuperuserRole, "writer", "moderator")
 
 	if authMiddleware != nil {
-		router.Post("/posts", authMiddleware, loadRoles, requireWriter, res.Create)
-		router.Put("/posts/:id", authMiddleware, loadRoles, requireWriterOrModerator, res.Update)
-		router.Delete("/posts/:id", authMiddleware, loadRoles, requireWriter, res.Delete)
+		router.Get("/posts", authMiddleware, res.List)
+		router.Get("/posts/:id", authMiddleware, res.Get)
+		router.Post("/posts", authMiddleware, loadRoles, requireAuth, requireWriter, res.Create)
+		router.Put("/posts/:id", authMiddleware, loadRoles, requireAuth, requireWriterOrModerator, res.Update)
+		router.Delete("/posts/:id", authMiddleware, loadRoles, requireAuth, requireWriter, res.Delete)
 	} else {
-		router.Post("/posts", loadRoles, requireWriter, res.Create)
-		router.Put("/posts/:id", loadRoles, requireWriterOrModerator, res.Update)
-		router.Delete("/posts/:id", loadRoles, requireWriter, res.Delete)
+		router.Get("/posts", res.List)
+		router.Get("/posts/:id", res.Get)
+		router.Post("/posts", loadRoles, requireAuth, requireWriter, res.Create)
+		router.Put("/posts/:id", loadRoles, requireAuth, requireWriterOrModerator, res.Update)
+		router.Delete("/posts/:id", loadRoles, requireAuth, requireWriter, res.Delete)
 	}
 
 	return postHooks
@@ -360,6 +362,15 @@ func requireRole(hierarchy map[string][]string, superuserRole string, requiredRo
 		}
 
 		return response.SendError(c, fiber.StatusForbidden, "insufficient permissions")
+	}
+}
+
+func requireAuthenticated() fiber.Handler {
+	return func(c fiber.Ctx) error {
+		if uid, ok := c.Locals("user_id").(string); !ok || uid == "" {
+			return response.SendError(c, fiber.StatusUnauthorized, "authentication required")
+		}
+		return c.Next()
 	}
 }
 

@@ -56,7 +56,7 @@ func (p *BlogPlugin) Initialize(config map[string]interface{}) error {
 
 	if appCfg, ok := config["config"].(*gorestconfig.Config); ok && appCfg.Auth.Enabled && p.db != nil {
 		jwtSvc := jwt.NewService(appCfg.Auth.JWTSecret, appCfg.Auth.JWTTTL)
-		p.authMiddleware = authmiddleware.AuthMiddleware(jwtSvc, p.db)
+		p.authMiddleware = authmiddleware.OptionalAuthMiddleware(jwtSvc, p.db)
 	}
 
 	if deps, ok := config[plugin.ConfigKeyDependencies].(map[string]plugin.Plugin); ok {
