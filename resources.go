@@ -2,6 +2,7 @@ package blog
 
 import (
 	"net/url"
+	"strings"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/nicolasbonnici/gorest/crud"
@@ -134,8 +135,10 @@ func (r *PostResource) List(c fiber.Ctx) error {
 		return err
 	}
 
+	titleSearch := strings.TrimSpace(c.Query("search"))
+
 	ctx := c.Context()
-	result, err := r.translationService.LoadPostsWithTranslations(ctx, limit, offset, includeCount, conditions, orderBy)
+	result, err := r.translationService.LoadPostsWithTranslations(ctx, limit, offset, includeCount, conditions, orderBy, titleSearch)
 	if err != nil {
 		return response.SendError(c, fiber.StatusInternalServerError, err.Error())
 	}

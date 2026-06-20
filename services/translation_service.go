@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -412,8 +413,8 @@ type PostWithTranslationsResult struct {
 	Total *int
 }
 
-func (s *TranslationService) LoadPostsWithTranslations(ctx context.Context, limit, offset int, includeCount bool, conditions []query.Condition, orderBy []crud.OrderByClause) (*PostWithTranslationsResult, error) {
-	sql, args, err := s.buildJoinQuery(limit, offset, conditions, orderBy)
+func (s *TranslationService) LoadPostsWithTranslations(ctx context.Context, limit, offset int, includeCount bool, conditions []query.Condition, orderBy []crud.OrderByClause, titleSearch string) (*PostWithTranslationsResult, error) {
+	sql, args, err := s.buildJoinQuery(limit, offset, conditions, orderBy, titleSearch)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build query: %w", err)
 	}
@@ -440,7 +441,7 @@ func (s *TranslationService) LoadPostsWithTranslations(ctx context.Context, limi
 	}
 
 	if includeCount {
-		total, err := s.getPostCount(ctx, conditions)
+		total, err := s.getPostCount(ctx, conditions, titleSearch)
 		if err != nil {
 			return nil, err
 		}
@@ -565,8 +566,8 @@ func (s *TranslationService) addMetricToPost(post *models.Post, rowData *postRow
 	}
 }
 
-func (s *TranslationService) getPostCount(ctx context.Context, conditions []query.Condition) (int, error) {
-	countSQL, countArgs, err := s.buildCountQuery(conditions)
+func (s *TranslationService) getPostCount(ctx context.Context, conditions []query.Condition, titleSearch string) (int, error) {
+	countSQL, countArgs, err := s.buildCountQuery(conditions, titleSearch)
 	if err != nil {
 		return 0, fmt.Errorf("failed to build count query: %w", err)
 	}
@@ -578,11 +579,14 @@ func (s *TranslationService) getPostCount(ctx context.Context, conditions []quer
 	return total, nil
 }
 
-func (s *TranslationService) buildJoinQuery(limit, offset int, conditions []query.Condition, orderBy []crud.OrderByClause) (string, []interface{}, error) {
+func (s *TranslationService) buildJoinQuery(limit, offset int, conditions []query.Condition, orderBy []crud.OrderByClause, titleSearch string) (string, []interface{}, error) {
 	innerQuery := s.qb.Select("p.id", "p.user_id", "p.slug", "p.status", "p.published_at", "p.updated_at", "p.created_at").
 		From("post").As("p")
 	for _, cond := range conditions {
 		innerQuery = innerQuery.Where(cond)
+	}
+	if titleSearch != "" {
+		innerQuery = innerQuery.Where(s.buildTitleSearchCondition(titleSearch))
 	}
 	if len(orderBy) > 0 {
 		for _, order := range orderBy {
@@ -622,14 +626,42 @@ func (s *TranslationService) buildJoinQuery(limit, offset int, conditions []quer
 	return cteBuilder.Build()
 }
 
-func (s *TranslationService) buildCountQuery(conditions []query.Condition) (string, []interface{}, error) {
+func (s *TranslationService) buildCountQuery(conditions []query.Condition, titleSearch string) (string, []interface{}, error) {
 	sb := s.qb.Select().
 		SelectExpr(query.CountDistinct(query.RawExpr("p.id"))).
 		From("post").As("p")
 	for _, cond := range conditions {
 		sb = sb.Where(cond)
 	}
+	if titleSearch != "" {
+		sb = sb.Where(s.buildTitleSearchCondition(titleSearch))
+	}
 	return sb.Build()
+}
+
+// buildTitleSearchCondition returns a condition that checks whether any translation
+// of a post contains the given term in its title field.
+// The JSON pattern anchors on the "title" key and the following "content" key to
+// avoid matching the same term that happens to appear only in the content body.
+func (s *TranslationService) buildTitleSearchCondition(term string) query.Condition {
+	escaped := escapeLikePattern(term)
+	pattern := `%"title":"` + "%" + escaped + `%","content":%`
+	titleSubquery := s.qb.
+		Select("translatable_id").
+		From("translations").
+		Where(query.And(
+			query.Eq("translatable", TranslatableTypePost),
+			query.ILike("content", pattern),
+		))
+	return query.InSubquery("id", titleSubquery)
+}
+
+// escapeLikePattern escapes LIKE wildcard characters in user input.
+func escapeLikePattern(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `%`, `\%`)
+	s = strings.ReplaceAll(s, `_`, `\_`)
+	return s
 }
 
 func parseTimeValue(val interface{}) (*time.Time, error) {

@@ -89,7 +89,7 @@ func TestLoadPostsWithTranslationsAndMetrics_Integration(t *testing.T) {
 	}
 
 	t.Run("Load posts with translations and metrics in single query", func(t *testing.T) {
-		result, err := translationService.LoadPostsWithTranslations(ctx, 10, 0, true, nil, nil)
+		result, err := translationService.LoadPostsWithTranslations(ctx, 10, 0, true, nil, nil, "")
 		if err != nil {
 			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
 		}
@@ -167,7 +167,7 @@ func TestLoadPostsWithTranslationsAndMetrics_Integration(t *testing.T) {
 	})
 
 	t.Run("Verify no N+1 queries - single query loads all data", func(t *testing.T) {
-		result, err := translationService.LoadPostsWithTranslations(ctx, 10, 0, false, nil, nil)
+		result, err := translationService.LoadPostsWithTranslations(ctx, 10, 0, false, nil, nil, "")
 		if err != nil {
 			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
 		}

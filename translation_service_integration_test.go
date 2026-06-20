@@ -55,7 +55,7 @@ func TestLoadPostsWithTranslations_Integration(t *testing.T) {
 	}
 
 	t.Run("Load all posts with translations", func(t *testing.T) {
-		result, err := service.LoadPostsWithTranslations(ctx, 10, 0, true, nil, nil)
+		result, err := service.LoadPostsWithTranslations(ctx, 10, 0, true, nil, nil, "")
 		if err != nil {
 			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
 		}
@@ -113,7 +113,7 @@ func TestLoadPostsWithTranslations_Integration(t *testing.T) {
 	})
 
 	t.Run("Load posts with pagination", func(t *testing.T) {
-		result, err := service.LoadPostsWithTranslations(ctx, 1, 0, true, nil, nil)
+		result, err := service.LoadPostsWithTranslations(ctx, 1, 0, true, nil, nil, "")
 		if err != nil {
 			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
 		}
@@ -132,7 +132,7 @@ func TestLoadPostsWithTranslations_Integration(t *testing.T) {
 			query.Eq("p.status", string(types.PostStatusPublished)),
 		}
 
-		result, err := service.LoadPostsWithTranslations(ctx, 10, 0, true, conditions, nil)
+		result, err := service.LoadPostsWithTranslations(ctx, 10, 0, true, conditions, nil, "")
 		if err != nil {
 			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
 		}
@@ -151,7 +151,7 @@ func TestLoadPostsWithTranslations_Integration(t *testing.T) {
 			{Column: "p.slug", Direction: query.ASC},
 		}
 
-		result, err := service.LoadPostsWithTranslations(ctx, 10, 0, false, nil, orderBy)
+		result, err := service.LoadPostsWithTranslations(ctx, 10, 0, false, nil, orderBy, "")
 		if err != nil {
 			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
 		}
@@ -170,7 +170,7 @@ func TestLoadPostsWithTranslations_Integration(t *testing.T) {
 	})
 
 	t.Run("Load posts without count", func(t *testing.T) {
-		result, err := service.LoadPostsWithTranslations(ctx, 10, 0, false, nil, nil)
+		result, err := service.LoadPostsWithTranslations(ctx, 10, 0, false, nil, nil, "")
 		if err != nil {
 			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
 		}
