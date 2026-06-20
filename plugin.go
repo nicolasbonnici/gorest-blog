@@ -116,5 +116,12 @@ func (p *BlogPlugin) GetOpenAPIResources() []plugin.OpenAPIResource {
 		CreateModel:   dtos.PostCreateDTO{},
 		UpdateModel:   dtos.PostUpdateDTO{},
 		Description:   "Blog post management",
+		ListQueryParams: []plugin.QueryParam{
+			{
+				Name:        "search",
+				Description: "Filter posts by title (case-insensitive partial match across all locales)",
+				Type:        "string",
+			},
+		},
 	}}
 }
