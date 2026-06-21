@@ -65,10 +65,10 @@ github.com/ncruces/go-strftime v1.0.0 h1:HMFp8mLCTPp341M/ZnA4qaf7ZlsbTc+miZjCLOF
 github.com/ncruces/go-strftime v1.0.0/go.mod h1:Fwc5htZGVVkseilnfgOVb9mKy6w1naJmn9CehxcKcls=
 github.com/nicolasbonnici/gorest v0.5.24 h1:8jouoWrxY8Q9yq9gZYCPE920KvdC49jQDyJiqyk1eAI=
 github.com/nicolasbonnici/gorest v0.5.24/go.mod h1:Py0UO5u7ms6u9Cc5L41meUaqPvL3IfMQxZpGqpIIsAA=
-github.com/nicolasbonnici/gorest-ai v0.2.9 h1:ibB9bJUP/u15WS2mwvC0mhYAOtUim34W1SSydIr3tv8=
-github.com/nicolasbonnici/gorest-ai v0.2.9/go.mod h1:48CnkxtxPtGojfL8OKowhelPSNeSA5e43y/Mla3vm3U=
-github.com/nicolasbonnici/gorest-taxonomy v0.2.10 h1:63giRDaxVaNOJa6X08cwfW02JcLPaLostfZqUo7YvVc=
-github.com/nicolasbonnici/gorest-taxonomy v0.2.10/go.mod h1:+r8UhmgnIfghQjp29e7bKAPUH7OTOhifTvpaHO9mfSc=
+github.com/nicolasbonnici/gorest-ai v0.2.10 h1:8g0xM+ahUVJ+Mt1jTLFew+MihlUpsx03sAq34arv5qw=
+github.com/nicolasbonnici/gorest-ai v0.2.10/go.mod h1:xXVs+j4man+0t5jiJ+W5n9jNumdmt+oMmim62MBqEAk=
+github.com/nicolasbonnici/gorest-taxonomy v0.2.11 h1:t15MVkHB9WlZrKAKnSDBEL5viqsA5jg6SUR89Mn3MGE=
+github.com/nicolasbonnici/gorest-taxonomy v0.2.11/go.mod h1:GdlFIn0fUq+KRL7AUvwLzaSVxtRqUkTnsV/CQlTjo4A=
 github.com/philhofer/fwd v1.2.0 h1:e6DnBTl7vGY+Gz322/ASL4Gyp1FspeMvx1RNDoToZuM=
 github.com/philhofer/fwd v1.2.0/go.mod h1:RqIHx9QI14HlwKwm98g9Re5prTQ6LdeRQn+gXJFxsJM=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
