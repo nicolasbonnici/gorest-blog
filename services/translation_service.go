@@ -651,7 +651,7 @@ func (s *TranslationService) buildTitleSearchCondition(term string) query.Condit
 		From("translations").
 		Where(query.And(
 			query.Eq("translatable", TranslatableTypePost),
-			query.ILike("content", pattern),
+			query.ILike("CAST(content AS text)", pattern),
 		))
 	return query.InSubquery("id", titleSubquery)
 }
