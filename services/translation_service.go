@@ -641,17 +641,28 @@ func (s *TranslationService) buildCountQuery(conditions []query.Condition, title
 
 // buildTitleSearchCondition returns a condition that checks whether any translation
 // of a post contains the given term in its title field.
-// The JSON pattern anchors on the "title" key and the following "content" key to
-// avoid matching the same term that happens to appear only in the content body.
+// Uses native JSON extraction per dialect to avoid JSONB key-ordering issues.
 func (s *TranslationService) buildTitleSearchCondition(term string) query.Condition {
 	escaped := escapeLikePattern(term)
-	pattern := `%"title":"` + "%" + escaped + `%","content":%`
+	pattern := "%" + escaped + "%"
+
+	var titleCond query.Condition
+	switch s.db.DriverName() {
+	case "postgres":
+		// JSONB ->> extracts as text; ILIKE is case-insensitive
+		titleCond = query.Raw("content->>'title' ILIKE ?", pattern)
+	case "mysql":
+		titleCond = query.Raw("JSON_UNQUOTE(JSON_EXTRACT(content, '$.title')) LIKE ?", pattern)
+	default: // sqlite
+		titleCond = query.Raw("json_extract(content, '$.title') LIKE ?", pattern)
+	}
+
 	titleSubquery := s.qb.
 		Select("translatable_id").
 		From("translations").
 		Where(query.And(
 			query.Eq("translatable", TranslatableTypePost),
-			query.ILike("CAST(content AS text)", pattern),
+			titleCond,
 		))
 	return query.InSubquery("id", titleSubquery)
 }
