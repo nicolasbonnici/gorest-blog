@@ -10,7 +10,7 @@ require (
 	github.com/nicolasbonnici/gorest v0.5.24
 	github.com/nicolasbonnici/gorest-ai v0.2.10
 	github.com/nicolasbonnici/gorest-taxonomy v0.2.11
-	github.com/schollz/progressbar/v3 v3.19.0
+	github.com/schollz/progressbar/v3 v3.19.1
 	golang.org/x/term v0.44.0
 )
 
