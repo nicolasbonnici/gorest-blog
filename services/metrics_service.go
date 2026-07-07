@@ -109,12 +109,24 @@ func (s *MetricsService) InitializeMetrics(ctx context.Context, postID string) e
 		return fmt.Errorf("invalid post ID: %w", err)
 	}
 
-	metricNames := []string{MetricNameViews, MetricNameLikes, MetricNameComments}
+	// Seed the three counters in one INSERT; the conflict clause makes re-init
+	// idempotent (INSERT IGNORE on MySQL, ON CONFLICT DO NOTHING elsewhere).
+	insert := s.qb.
+		Insert("metrics").
+		Columns("resource", "resource_id", "name", "value").
+		OnConflictDoNothing("resource", "resource_id", "name")
 
-	for _, metricName := range metricNames {
-		if err := s.initializeMetric(ctx, postUUID, metricName); err != nil {
-			return fmt.Errorf("failed to initialize %s metric: %w", metricName, err)
-		}
+	for _, metricName := range []string{MetricNameViews, MetricNameLikes, MetricNameComments} {
+		insert.Values(MetricResourcePost, postUUID, metricName, 0)
+	}
+
+	sql, args, err := insert.Build()
+	if err != nil {
+		return fmt.Errorf("failed to build insert query: %w", err)
+	}
+
+	if _, err := s.db.Exec(ctx, sql, args...); err != nil {
+		return fmt.Errorf("failed to initialize metrics: %w", err)
 	}
 
 	return nil
@@ -265,42 +277,6 @@ func (s *MetricsService) decrementMetric(ctx context.Context, postID, metricName
 	_, err = s.db.Exec(ctx, sql, args...)
 	if err != nil {
 		return fmt.Errorf("failed to decrement %s: %w", metricName, err)
-	}
-
-	return nil
-}
-
-func (s *MetricsService) initializeMetric(ctx context.Context, postUUID uuid.UUID, metricName string) error {
-	var sql string
-	var args []interface{}
-
-	switch s.db.DriverName() {
-	case "postgres":
-		sql = `
-			INSERT INTO metrics (resource, resource_id, name, value)
-			VALUES ($1, $2, $3, 0)
-			ON CONFLICT (resource, resource_id, name) DO NOTHING
-		`
-		args = []interface{}{MetricResourcePost, postUUID, metricName}
-	case "mysql":
-		sql = `
-			INSERT IGNORE INTO metrics (resource, resource_id, name, value)
-			VALUES (?, ?, ?, 0)
-		`
-		args = []interface{}{MetricResourcePost, postUUID.String(), metricName}
-	case "sqlite":
-		sql = `
-			INSERT OR IGNORE INTO metrics (resource, resource_id, name, value)
-			VALUES (?, ?, ?, 0)
-		`
-		args = []interface{}{MetricResourcePost, postUUID.String(), metricName}
-	default:
-		return fmt.Errorf("unsupported database driver: %s", s.db.DriverName())
-	}
-
-	_, err := s.db.Exec(ctx, sql, args...)
-	if err != nil {
-		return fmt.Errorf("failed to initialize metric: %w", err)
 	}
 
 	return nil

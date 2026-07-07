@@ -273,21 +273,14 @@ func (h *PostHooks) EnrichGetByID(ctx context.Context, c fiber.Ctx, model *model
 	return nil
 }
 
-func (h *PostHooks) EnrichGetAll(ctx context.Context, c fiber.Ctx, models []*models.Post) error {
-	for _, model := range models {
-		translations, err := h.translationService.ListTranslations(ctx, model.ID)
-		if err == nil && len(translations) > 0 {
-			model.Translations = translations
-		}
-
-		metrics, err := h.metricsService.GetMetrics(ctx, model.ID)
-		if err == nil {
-			model.Metrics = metrics
-		}
-
-		h.enrichTaxonomy(ctx, model)
+// EnrichGetAll only loads taxonomy: the List handler already hydrates
+// translations and metrics for the whole page in one join
+// (TranslationService.LoadPostsWithTranslations), so re-reading them per post
+// here would be a redundant N+1.
+func (h *PostHooks) EnrichGetAll(ctx context.Context, c fiber.Ctx, posts []*models.Post) error {
+	for _, post := range posts {
+		h.enrichTaxonomy(ctx, post)
 	}
-
 	return nil
 }
 

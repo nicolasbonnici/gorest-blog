@@ -46,7 +46,13 @@ func (s *TranslationService) CreateTranslations(ctx context.Context, postID stri
 		return errors.New("at least one translation is required")
 	}
 
-	// Create all translations
+	now := time.Now()
+	insert := s.qb.
+		Insert("translations").
+		Columns("id", "user_id", "translatable_id", "translatable", "locale", "content", "created_at")
+
+	// Accumulate every locale into one multi-row INSERT so a post with N
+	// translations costs a single round-trip instead of N.
 	for locale, translationContent := range translations {
 		if translationContent == nil {
 			return fmt.Errorf("translation for locale %s cannot be nil", locale)
@@ -63,22 +69,16 @@ func (s *TranslationService) CreateTranslations(ctx context.Context, postID stri
 			return fmt.Errorf("failed to serialize content for locale %s: %w", locale, err)
 		}
 
-		translationID := uuid.New()
-		now := time.Now()
+		insert.Values(uuid.New(), userID, postUUID, TranslatableTypePost, locale, jsonContent, now)
+	}
 
-		sql, args, err := s.qb.
-			Insert("translations").
-			Columns("id", "user_id", "translatable_id", "translatable", "locale", "content", "created_at").
-			Values(translationID, userID, postUUID, TranslatableTypePost, locale, jsonContent, now).
-			Build()
-		if err != nil {
-			return fmt.Errorf("failed to build insert query for locale %s: %w", locale, err)
-		}
+	sql, args, err := insert.Build()
+	if err != nil {
+		return fmt.Errorf("failed to build insert query: %w", err)
+	}
 
-		_, err = s.db.Exec(ctx, sql, args...)
-		if err != nil {
-			return fmt.Errorf("failed to create translation for locale %s: %w", locale, err)
-		}
+	if _, err := s.db.Exec(ctx, sql, args...); err != nil {
+		return fmt.Errorf("failed to create translations: %w", err)
 	}
 
 	return nil
