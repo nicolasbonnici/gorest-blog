@@ -188,6 +188,7 @@ func createTestSchema(ctx context.Context, db database.Database) error {
 			user_id TEXT,
 			slug TEXT NOT NULL,
 			status TEXT NOT NULL DEFAULT 'drafted' CHECK(status IN ('drafted', 'published')),
+			visual TEXT,
 			published_at TEXT,
 			updated_at TEXT,
 			created_at TEXT NOT NULL DEFAULT (datetime('now'))

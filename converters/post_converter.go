@@ -20,6 +20,7 @@ func (c *PostConverter) CreateDTOToModel(dto dtos.PostCreateDTO, userID *string)
 		UserID: userID,
 		Slug:   dto.Slug,
 		Status: dto.Status,
+		Visual: dto.Visual,
 	}
 
 	if dto.Status == types.PostStatusPublished {
@@ -45,6 +46,10 @@ func (c *PostConverter) UpdateDTOToModel(dto dtos.PostUpdateDTO, existing *model
 		}
 	}
 
+	if dto.Visual != nil {
+		updated.Visual = dto.Visual
+	}
+
 	if dto.PublishedAt != nil {
 		updated.PublishedAt = dto.PublishedAt
 	}
@@ -61,6 +66,7 @@ func (c *PostConverter) ModelToResponseDTO(model models.Post) dtos.PostResponseD
 		UserID:         model.UserID,
 		Slug:           model.Slug,
 		Status:         model.Status,
+		Visual:         model.Visual,
 		PublishedAt:    model.PublishedAt,
 		RemoteSourceID: model.RemoteSourceID,
 		RemoteSource:   model.RemoteSource,

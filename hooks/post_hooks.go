@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -26,6 +27,9 @@ import (
 
 // Must match an entry in taxonomy.allowed_types in gorest.yaml.
 const PostResourceType = "post"
+
+// Must match the visual column width in 20260714000001000_add_post_visual_column.go.
+const maxVisualLength = 2048
 
 type PostHooks struct {
 	db                 database.Database
@@ -62,6 +66,10 @@ func (h *PostHooks) CreateHook(c fiber.Ctx, dto dtos.PostCreateDTO, model *model
 		return err
 	}
 
+	if err := normalizeVisual(model); err != nil {
+		return fiber.NewError(400, err.Error())
+	}
+
 	tempModel := *model
 	tempModel.ID = ""
 	tempModel.UserID = nil
@@ -89,6 +97,10 @@ func (h *PostHooks) UpdateHook(c fiber.Ctx, dto dtos.PostUpdateDTO, model *model
 		if !isOwner && !isModerator {
 			return fiber.NewError(403, "insufficient permissions: you can only update your own posts")
 		}
+	}
+
+	if err := normalizeVisual(model); err != nil {
+		return fiber.NewError(400, err.Error())
 	}
 
 	tempModel := *model
@@ -399,6 +411,32 @@ func (h *PostHooks) sanitizeTranslation(translation *dtos.PostTranslationContent
 
 	translation.Title = modelTranslation.Title
 	translation.Content = modelTranslation.Content
+}
+
+// A blank visual is stored as NULL so clients can clear it by sending an empty string.
+func normalizeVisual(model *models.Post) error {
+	if model.Visual == nil {
+		return nil
+	}
+
+	visual := strings.TrimSpace(*model.Visual)
+	if visual == "" {
+		model.Visual = nil
+		return nil
+	}
+
+	if len(visual) > maxVisualLength {
+		return fmt.Errorf("visual must not exceed %d characters", maxVisualLength)
+	}
+
+	parsed, err := url.Parse(visual)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return errors.New("visual must be a valid http(s) URL")
+	}
+
+	model.Visual = &visual
+
+	return nil
 }
 
 func (h *PostHooks) enrichCreateModel(c fiber.Ctx, model *models.Post) error {
