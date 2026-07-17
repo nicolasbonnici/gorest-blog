@@ -16,6 +16,7 @@ type Post struct {
 	UserID         *string                            `json:"userId,omitempty" db:"user_id"`
 	Slug           string                             `json:"slug" db:"slug"`
 	Status         types.PostStatus                   `json:"status" db:"status"`
+	Visual         *string                            `json:"visual,omitempty" db:"visual"`
 	PublishedAt    *time.Time                         `json:"publishedAt,omitempty" db:"published_at"`
 	RemoteSourceID *string                            `json:"remoteSourceId,omitempty" db:"remote_source_id"`
 	RemoteSource   *string                            `json:"remoteSource,omitempty" db:"remote_source"`

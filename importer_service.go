@@ -664,7 +664,7 @@ func (s *ImporterService) truncatePosts(ctx context.Context) error {
 
 func (s *ImporterService) findBySlug(ctx context.Context, slug string) (*models.Post, error) {
 	sql, args, err := s.qb.
-		Select("id", "user_id", "slug", "status", "published_at", "remote_source_id", "remote_source", "updated_at", "created_at").
+		Select("id", "user_id", "slug", "status", "visual", "published_at", "remote_source_id", "remote_source", "updated_at", "created_at").
 		From("post").
 		Where(query.Eq("slug", slug)).
 		Limit(1).
@@ -689,6 +689,7 @@ func (s *ImporterService) findBySlug(ctx context.Context, slug string) (*models.
 		&post.UserID,
 		&post.Slug,
 		&post.Status,
+		&post.Visual,
 		&post.PublishedAt,
 		&post.RemoteSourceID,
 		&post.RemoteSource,
@@ -979,7 +980,7 @@ func (s *ImporterService) updateFromRemote(ctx context.Context, existing *models
 
 func (s *ImporterService) fetchLocalPosts(ctx context.Context, userID string) ([]models.Post, error) {
 	sql, args, err := s.qb.
-		Select("id", "user_id", "slug", "status", "published_at", "remote_source_id", "remote_source", "updated_at", "created_at").
+		Select("id", "user_id", "slug", "status", "visual", "published_at", "remote_source_id", "remote_source", "updated_at", "created_at").
 		From("post").
 		Where(query.Eq("user_id", userID)).
 		Build()
@@ -1001,6 +1002,7 @@ func (s *ImporterService) fetchLocalPosts(ctx context.Context, userID string) ([
 			&post.UserID,
 			&post.Slug,
 			&post.Status,
+			&post.Visual,
 			&post.PublishedAt,
 			&post.RemoteSourceID,
 			&post.RemoteSource,

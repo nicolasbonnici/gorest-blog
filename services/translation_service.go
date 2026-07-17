@@ -456,6 +456,7 @@ type postRowData struct {
 	userID      *string
 	slug        string
 	status      string
+	visual      *string
 	publishedAt interface{}
 	updatedAt   interface{}
 	createdAt   interface{}
@@ -494,6 +495,7 @@ func (s *TranslationService) scanRow(rows database.Rows) (*postRowData, error) {
 		&rowData.userID,
 		&rowData.slug,
 		&rowData.status,
+		&rowData.visual,
 		&rowData.publishedAt,
 		&rowData.updatedAt,
 		&rowData.createdAt,
@@ -519,6 +521,7 @@ func (s *TranslationService) ensurePostExists(postsMap map[string]*models.Post, 
 		UserID:       rowData.userID,
 		Slug:         rowData.slug,
 		Status:       types.PostStatus(rowData.status),
+		Visual:       rowData.visual,
 		PublishedAt:  s.parseTime(rowData.publishedAt),
 		UpdatedAt:    s.parseTime(rowData.updatedAt),
 		CreatedAt:    s.parseTime(rowData.createdAt),
@@ -580,7 +583,7 @@ func (s *TranslationService) getPostCount(ctx context.Context, conditions []quer
 }
 
 func (s *TranslationService) buildJoinQuery(limit, offset int, conditions []query.Condition, orderBy []crud.OrderByClause, titleSearch string) (string, []interface{}, error) {
-	innerQuery := s.qb.Select("p.id", "p.user_id", "p.slug", "p.status", "p.published_at", "p.updated_at", "p.created_at").
+	innerQuery := s.qb.Select("p.id", "p.user_id", "p.slug", "p.status", "p.visual", "p.published_at", "p.updated_at", "p.created_at").
 		From("post").As("p")
 	for _, cond := range conditions {
 		innerQuery = innerQuery.Where(cond)
@@ -599,7 +602,7 @@ func (s *TranslationService) buildJoinQuery(limit, offset int, conditions []quer
 
 	cteBuilder := s.qb.WithCTE("paginated_posts", innerQuery).
 		Select(
-			"p.id", "p.user_id", "p.slug", "p.status",
+			"p.id", "p.user_id", "p.slug", "p.status", "p.visual",
 			"p.published_at", "p.updated_at", "p.created_at",
 			"t.locale", "t.content",
 			"m.name", "m.value",

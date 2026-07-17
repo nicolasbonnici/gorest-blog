@@ -16,12 +16,14 @@ type PostTranslationContentDTO struct {
 type PostCreateDTO struct {
 	Slug         string                                `json:"slug"`
 	Status       types.PostStatus                      `json:"status"`
+	Visual       *string                               `json:"visual,omitempty"`
 	Translations map[string]*PostTranslationContentDTO `json:"translations"`
 }
 
 type PostUpdateDTO struct {
 	Slug         *string                               `json:"slug,omitempty"`
 	Status       *types.PostStatus                     `json:"status,omitempty"`
+	Visual       *string                               `json:"visual,omitempty"`
 	PublishedAt  *time.Time                            `json:"publishedAt,omitempty"`
 	Translations map[string]*PostTranslationContentDTO `json:"translations,omitempty"`
 }
@@ -40,6 +42,7 @@ type PostResponseDTO struct {
 	UserID         *string                               `json:"userId,omitempty"`
 	Slug           string                                `json:"slug"`
 	Status         types.PostStatus                      `json:"status"`
+	Visual         *string                               `json:"visual,omitempty"`
 	PublishedAt    *time.Time                            `json:"publishedAt,omitempty"`
 	RemoteSourceID *string                               `json:"remoteSourceId,omitempty"`
 	RemoteSource   *string                               `json:"remoteSource,omitempty"`
