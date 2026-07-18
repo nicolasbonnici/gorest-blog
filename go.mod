@@ -8,8 +8,8 @@ require (
 	github.com/gofiber/fiber/v3 v3.4.0
 	github.com/google/uuid v1.6.0
 	github.com/nicolasbonnici/gorest v0.6.4
-	github.com/nicolasbonnici/gorest-ai v0.6.3
-	github.com/nicolasbonnici/gorest-taxonomy v0.6.3
+	github.com/nicolasbonnici/gorest-ai v0.6.4
+	github.com/nicolasbonnici/gorest-taxonomy v0.6.4
 	github.com/schollz/progressbar/v3 v3.19.1
 	golang.org/x/term v0.45.0
 )
