@@ -1,7 +1,8 @@
 # GoREST Blog Plugin
 
 [![CI](https://github.com/nicolasbonnici/gorest-blog/actions/workflows/ci.yml/badge.svg)](https://github.com/nicolasbonnici/gorest-blog/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/nicolasbonnici/gorest-blog)](https://goreportcard.com/report/github.com/nicolasbonnici/gorest-blog)
+[![Go Reference](https://pkg.go.dev/badge/github.com/nicolasbonnici/gorest-blog.svg)](https://pkg.go.dev/github.com/nicolasbonnici/gorest-blog)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/nicolasbonnici/gorest-blog)](https://github.com/nicolasbonnici/gorest-blog/blob/HEAD/go.mod)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A production-ready blog plugin for GoREST with multi-language support, RBAC, and metrics.
