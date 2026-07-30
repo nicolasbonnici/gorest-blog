@@ -7,9 +7,9 @@ toolchain go1.26.5
 require (
 	github.com/gofiber/fiber/v3 v3.4.0
 	github.com/google/uuid v1.6.0
-	github.com/nicolasbonnici/gorest v0.6.6
-	github.com/nicolasbonnici/gorest-ai v0.6.7
-	github.com/nicolasbonnici/gorest-taxonomy v0.6.7
+	github.com/nicolasbonnici/gorest v0.6.7
+	github.com/nicolasbonnici/gorest-ai v0.6.8
+	github.com/nicolasbonnici/gorest-taxonomy v0.6.8
 	github.com/schollz/progressbar/v3 v3.19.1
 	golang.org/x/term v0.45.0
 )
@@ -49,5 +49,5 @@ require (
 	modernc.org/libc v1.74.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
-	modernc.org/sqlite v1.54.0 // indirect
+	modernc.org/sqlite v1.55.0 // indirect
 )
