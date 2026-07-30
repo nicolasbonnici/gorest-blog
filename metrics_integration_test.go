@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/nicolasbonnici/gorest-blog/services"
 	"github.com/nicolasbonnici/gorest-blog/types"
+	"github.com/nicolasbonnici/gorest/crud"
 	"github.com/nicolasbonnici/gorest/database"
 	_ "github.com/nicolasbonnici/gorest/database/sqlite"
 )
@@ -89,7 +90,7 @@ func TestLoadPostsWithTranslationsAndMetrics_Integration(t *testing.T) {
 	}
 
 	t.Run("Load posts with translations and metrics in single query", func(t *testing.T) {
-		result, err := translationService.LoadPostsWithTranslations(ctx, 10, 0, true, nil, nil, "")
+		result, err := translationService.LoadPostsWithTranslations(ctx, 10, 0, true, nil, nil, "", crud.CountExact)
 		if err != nil {
 			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
 		}
@@ -166,8 +167,8 @@ func TestLoadPostsWithTranslationsAndMetrics_Integration(t *testing.T) {
 		}
 	})
 
-	t.Run("Verify no N+1 queries - single query loads all data", func(t *testing.T) {
-		result, err := translationService.LoadPostsWithTranslations(ctx, 10, 0, false, nil, nil, "")
+	t.Run("Verify no N+1 queries - a fixed number of queries loads all data", func(t *testing.T) {
+		result, err := translationService.LoadPostsWithTranslations(ctx, 10, 0, false, nil, nil, "", crud.CountExact)
 		if err != nil {
 			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
 		}
@@ -178,11 +179,11 @@ func TestLoadPostsWithTranslationsAndMetrics_Integration(t *testing.T) {
 
 		for _, post := range result.Posts {
 			if post.Metrics == nil {
-				t.Errorf("Post %s has nil metrics - metrics not loaded in JOIN query", post.ID)
+				t.Errorf("Post %s has nil metrics - metrics not loaded", post.ID)
 			}
 
 			if len(post.Translations) == 0 {
-				t.Errorf("Post %s has no translations - translations not loaded in JOIN query", post.ID)
+				t.Errorf("Post %s has no translations - translations not loaded", post.ID)
 			}
 		}
 	})

@@ -289,10 +289,43 @@ func (h *PostHooks) EnrichGetByID(ctx context.Context, c fiber.Ctx, model *model
 // translations and metrics for the whole page in one join
 // (TranslationService.LoadPostsWithTranslations), so re-reading them per post
 // here would be a redundant N+1.
+// Taxonomy is loaded for the whole page in two queries rather than two per
+// post; errors are swallowed for the same reason as enrichTaxonomy.
 func (h *PostHooks) EnrichGetAll(ctx context.Context, c fiber.Ctx, posts []*models.Post) error {
-	for _, post := range posts {
-		h.enrichTaxonomy(ctx, post)
+	if h.taxonomyService == nil || len(posts) == 0 {
+		return nil
 	}
+
+	postIDs := make([]uuid.UUID, 0, len(posts))
+	idByPost := make(map[*models.Post]uuid.UUID, len(posts))
+	for _, post := range posts {
+		if post.ID == "" {
+			continue
+		}
+		postID, err := uuid.Parse(post.ID)
+		if err != nil {
+			continue
+		}
+		postIDs = append(postIDs, postID)
+		idByPost[post] = postID
+	}
+
+	if len(postIDs) == 0 {
+		return nil
+	}
+
+	categories, catErr := h.taxonomyService.GetCategoriesForResources(ctx, PostResourceType, postIDs)
+	tags, tagErr := h.taxonomyService.GetTagsForResources(ctx, PostResourceType, postIDs)
+
+	for post, postID := range idByPost {
+		if catErr == nil {
+			post.Categories = categories[postID]
+		}
+		if tagErr == nil {
+			post.Tags = tags[postID]
+		}
+	}
+
 	return nil
 }
 

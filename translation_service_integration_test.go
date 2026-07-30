@@ -2,6 +2,7 @@ package blog
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -55,7 +56,7 @@ func TestLoadPostsWithTranslations_Integration(t *testing.T) {
 	}
 
 	t.Run("Load all posts with translations", func(t *testing.T) {
-		result, err := service.LoadPostsWithTranslations(ctx, 10, 0, true, nil, nil, "")
+		result, err := service.LoadPostsWithTranslations(ctx, 10, 0, true, nil, nil, "", crud.CountExact)
 		if err != nil {
 			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
 		}
@@ -113,7 +114,7 @@ func TestLoadPostsWithTranslations_Integration(t *testing.T) {
 	})
 
 	t.Run("Load posts with pagination", func(t *testing.T) {
-		result, err := service.LoadPostsWithTranslations(ctx, 1, 0, true, nil, nil, "")
+		result, err := service.LoadPostsWithTranslations(ctx, 1, 0, true, nil, nil, "", crud.CountExact)
 		if err != nil {
 			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
 		}
@@ -132,7 +133,7 @@ func TestLoadPostsWithTranslations_Integration(t *testing.T) {
 			query.Eq("p.status", string(types.PostStatusPublished)),
 		}
 
-		result, err := service.LoadPostsWithTranslations(ctx, 10, 0, true, conditions, nil, "")
+		result, err := service.LoadPostsWithTranslations(ctx, 10, 0, true, conditions, nil, "", crud.CountExact)
 		if err != nil {
 			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
 		}
@@ -151,7 +152,7 @@ func TestLoadPostsWithTranslations_Integration(t *testing.T) {
 			{Column: "p.slug", Direction: query.ASC},
 		}
 
-		result, err := service.LoadPostsWithTranslations(ctx, 10, 0, false, nil, orderBy, "")
+		result, err := service.LoadPostsWithTranslations(ctx, 10, 0, false, nil, orderBy, "", crud.CountExact)
 		if err != nil {
 			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
 		}
@@ -170,7 +171,7 @@ func TestLoadPostsWithTranslations_Integration(t *testing.T) {
 	})
 
 	t.Run("Load posts without count", func(t *testing.T) {
-		result, err := service.LoadPostsWithTranslations(ctx, 10, 0, false, nil, nil, "")
+		result, err := service.LoadPostsWithTranslations(ctx, 10, 0, false, nil, nil, "", crud.CountExact)
 		if err != nil {
 			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
 		}
@@ -256,4 +257,91 @@ func insertTestTranslation(ctx context.Context, db database.Database, postID, lo
 		VALUES (?, ?, ?, ?, ?, ?)
 	`, translationID, postID, services.TranslatableTypePost, locale, jsonContent, time.Now().Format(time.RFC3339))
 	return err
+}
+
+func TestLoadPostsWithTranslations_CountModes(t *testing.T) {
+	ctx := context.Background()
+
+	db, err := database.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	if err := createTestSchema(ctx, db); err != nil {
+		t.Fatalf("Failed to create test schema: %v", err)
+	}
+
+	service := services.NewTranslationService(db)
+	now := time.Now()
+
+	for i := range 5 {
+		id := uuid.New().String()
+		if err := insertTestPost(ctx, db, id, fmt.Sprintf("post-%d", i), types.PostStatusPublished, &now); err != nil {
+			t.Fatalf("Failed to insert test post %d: %v", i, err)
+		}
+	}
+
+	t.Run("short page infers the total without counting", func(t *testing.T) {
+		result, err := service.LoadPostsWithTranslations(ctx, 10, 0, true, nil, nil, "", crud.CountExact)
+		if err != nil {
+			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
+		}
+		if result.Total == nil || *result.Total != 5 {
+			t.Errorf("expected total 5, got %v", result.Total)
+		}
+	})
+
+	t.Run("second page infers offset plus rows", func(t *testing.T) {
+		result, err := service.LoadPostsWithTranslations(ctx, 3, 3, true, nil, nil, "", crud.CountExact)
+		if err != nil {
+			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
+		}
+		if len(result.Posts) != 2 {
+			t.Fatalf("expected 2 posts on the last page, got %d", len(result.Posts))
+		}
+		if result.Total == nil || *result.Total != 5 {
+			t.Errorf("expected total 5, got %v", result.Total)
+		}
+	})
+
+	t.Run("full page counts exactly", func(t *testing.T) {
+		result, err := service.LoadPostsWithTranslations(ctx, 3, 0, true, nil, nil, "", crud.CountExact)
+		if err != nil {
+			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
+		}
+		if result.Total == nil || *result.Total != 5 {
+			t.Errorf("expected total 5, got %v", result.Total)
+		}
+	})
+
+	t.Run("none omits the total", func(t *testing.T) {
+		result, err := service.LoadPostsWithTranslations(ctx, 3, 0, true, nil, nil, "", crud.CountNone)
+		if err != nil {
+			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
+		}
+		if result.Total != nil {
+			t.Errorf("expected no total, got %d", *result.Total)
+		}
+	})
+
+	t.Run("estimate falls back to exact on sqlite", func(t *testing.T) {
+		result, err := service.LoadPostsWithTranslations(ctx, 3, 0, true, nil, nil, "", crud.CountEstimate)
+		if err != nil {
+			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
+		}
+		if result.Total == nil || *result.Total != 5 {
+			t.Errorf("expected the exact total 5, got %v", result.Total)
+		}
+	})
+
+	t.Run("includeCount false omits the total", func(t *testing.T) {
+		result, err := service.LoadPostsWithTranslations(ctx, 3, 0, false, nil, nil, "", crud.CountExact)
+		if err != nil {
+			t.Fatalf("LoadPostsWithTranslations failed: %v", err)
+		}
+		if result.Total != nil {
+			t.Errorf("expected no total, got %d", *result.Total)
+		}
+	})
 }

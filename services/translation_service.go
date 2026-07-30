@@ -413,26 +413,27 @@ type PostWithTranslationsResult struct {
 	Total *int
 }
 
-func (s *TranslationService) LoadPostsWithTranslations(ctx context.Context, limit, offset int, includeCount bool, conditions []query.Condition, orderBy []crud.OrderByClause, titleSearch string) (*PostWithTranslationsResult, error) {
-	sql, args, err := s.buildJoinQuery(limit, offset, conditions, orderBy, titleSearch)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build query: %w", err)
-	}
-
-	rows, err := s.db.Query(ctx, sql, args...)
-	if err != nil {
-		return nil, fmt.Errorf("query failed: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	postsMap, postOrder, err := s.processRows(rows)
+func (s *TranslationService) LoadPostsWithTranslations(ctx context.Context, limit, offset int, includeCount bool, conditions []query.Condition, orderBy []crud.OrderByClause, titleSearch string, countMode crud.CountMode) (*PostWithTranslationsResult, error) {
+	posts, byID, err := s.loadPosts(ctx, limit, offset, conditions, orderBy, titleSearch)
 	if err != nil {
 		return nil, err
 	}
 
-	posts := make([]*models.Post, 0, len(postOrder))
-	for _, id := range postOrder {
-		posts = append(posts, postsMap[id])
+	// Translations and metrics are loaded side by side rather than joined onto
+	// the posts query: joining both multiplies rows (a post with 11 locales and
+	// 5 metrics arrives 55 times), and the fan-out grows with every new locale.
+	if len(posts) > 0 {
+		ids := make([]any, 0, len(posts))
+		for _, post := range posts {
+			ids = append(ids, post.ID)
+		}
+
+		if err := s.attachTranslations(ctx, byID, ids); err != nil {
+			return nil, err
+		}
+		if err := s.attachMetrics(ctx, byID, ids); err != nil {
+			return nil, err
+		}
 	}
 
 	result := &PostWithTranslationsResult{
@@ -441,96 +442,217 @@ func (s *TranslationService) LoadPostsWithTranslations(ctx context.Context, limi
 	}
 
 	if includeCount {
-		total, err := s.getPostCount(ctx, conditions, titleSearch)
+		total, err := s.countPosts(ctx, countMode, limit, offset, len(posts), conditions, titleSearch)
 		if err != nil {
 			return nil, err
 		}
-		result.Total = &total
+		result.Total = total
 	}
 
 	return result, nil
 }
 
-type postRowData struct {
-	id          string
-	userID      *string
-	slug        string
-	status      string
-	visual      *string
-	publishedAt interface{}
-	updatedAt   interface{}
-	createdAt   interface{}
-	locale      *string
-	content     *string
-	metricName  *string
-	metricValue *int64
-}
+// loadPosts fetches one page of post metadata, returning them in query order
+// alongside an index by id for the attach* loaders to fill in.
+func (s *TranslationService) loadPosts(ctx context.Context, limit, offset int, conditions []query.Condition, orderBy []crud.OrderByClause, titleSearch string) ([]*models.Post, map[string]*models.Post, error) {
+	sb := s.qb.Select("p.id", "p.user_id", "p.slug", "p.status", "p.visual", "p.published_at", "p.updated_at", "p.created_at").
+		From("post").As("p")
 
-func (s *TranslationService) processRows(rows database.Rows) (map[string]*models.Post, []string, error) {
-	postsMap := make(map[string]*models.Post)
-	var postOrder []string
+	for _, cond := range conditions {
+		sb = sb.Where(cond)
+	}
+	if titleSearch != "" {
+		sb = sb.Where(s.buildTitleSearchCondition(titleSearch))
+	}
+
+	if len(orderBy) > 0 {
+		for _, order := range orderBy {
+			sb = sb.OrderBy(order.Column, order.Direction)
+		}
+	} else {
+		sb = sb.OrderBy("p.created_at", query.DESC)
+	}
+
+	sql, args, err := sb.Limit(limit).Offset(offset).Build()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to build query: %w", err)
+	}
+
+	rows, err := s.db.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("query failed: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	posts := make([]*models.Post, 0, limit)
+	byID := make(map[string]*models.Post, limit)
 
 	for rows.Next() {
-		rowData, err := s.scanRow(rows)
-		if err != nil {
-			return nil, nil, err
+		var (
+			id, slug, status              string
+			userID, visual                *string
+			publishedAt, updatedAt, added any
+		)
+		if err := rows.Scan(&id, &userID, &slug, &status, &visual, &publishedAt, &updatedAt, &added); err != nil {
+			return nil, nil, fmt.Errorf("scan failed: %w", err)
 		}
 
-		post := s.ensurePostExists(postsMap, &postOrder, rowData)
-
-		if err := s.addTranslationToPost(post, rowData); err != nil {
-			return nil, nil, err
+		post := &models.Post{
+			ID:           id,
+			UserID:       userID,
+			Slug:         slug,
+			Status:       types.PostStatus(status),
+			Visual:       visual,
+			PublishedAt:  s.parseTime(publishedAt),
+			UpdatedAt:    s.parseTime(updatedAt),
+			CreatedAt:    s.parseTime(added),
+			Translations: make(map[string]*models.PostTranslationContent),
+			Metrics:      &models.PostMetrics{PostID: id},
 		}
-
-		s.addMetricToPost(post, rowData)
+		posts = append(posts, post)
+		byID[id] = post
 	}
 
-	return postsMap, postOrder, nil
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+
+	return posts, byID, nil
 }
 
-func (s *TranslationService) scanRow(rows database.Rows) (*postRowData, error) {
-	var rowData postRowData
-	err := rows.Scan(
-		&rowData.id,
-		&rowData.userID,
-		&rowData.slug,
-		&rowData.status,
-		&rowData.visual,
-		&rowData.publishedAt,
-		&rowData.updatedAt,
-		&rowData.createdAt,
-		&rowData.locale,
-		&rowData.content,
-		&rowData.metricName,
-		&rowData.metricValue,
-	)
+func (s *TranslationService) attachTranslations(ctx context.Context, byID map[string]*models.Post, ids []any) error {
+	sql, args, err := s.qb.
+		Select("t.translatable_id", "t.locale", "t.content").
+		From("translations").As("t").
+		Where(query.Eq("t.translatable", TranslatableTypePost)).
+		Where(query.In("t.translatable_id", ids...)).
+		Build()
 	if err != nil {
-		return nil, fmt.Errorf("scan failed: %w", err)
+		return fmt.Errorf("failed to build translations query: %w", err)
 	}
-	return &rowData, nil
+
+	rows, err := s.db.Query(ctx, sql, args...)
+	if err != nil {
+		return fmt.Errorf("translations query failed: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var postID string
+		var locale, content *string
+		if err := rows.Scan(&postID, &locale, &content); err != nil {
+			return fmt.Errorf("scan failed: %w", err)
+		}
+
+		post, ok := byID[postID]
+		if !ok || locale == nil || content == nil {
+			continue
+		}
+
+		translationContent, err := ParsePostTranslationContent(*content)
+		if err != nil {
+			return fmt.Errorf("failed to parse translation for post %s, locale %s: %w", postID, *locale, err)
+		}
+		post.Translations[*locale] = translationContent
+	}
+
+	return rows.Err()
 }
 
-func (s *TranslationService) ensurePostExists(postsMap map[string]*models.Post, postOrder *[]string, rowData *postRowData) *models.Post {
-	post, exists := postsMap[rowData.id]
-	if exists {
-		return post
+func (s *TranslationService) attachMetrics(ctx context.Context, byID map[string]*models.Post, ids []any) error {
+	sql, args, err := s.qb.
+		Select("m.resource_id", "m.name", "m.value").
+		From("metrics").As("m").
+		Where(query.Eq("m.resource", MetricResourcePost)).
+		Where(query.In("m.resource_id", ids...)).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to build metrics query: %w", err)
 	}
 
-	post = &models.Post{
-		ID:           rowData.id,
-		UserID:       rowData.userID,
-		Slug:         rowData.slug,
-		Status:       types.PostStatus(rowData.status),
-		Visual:       rowData.visual,
-		PublishedAt:  s.parseTime(rowData.publishedAt),
-		UpdatedAt:    s.parseTime(rowData.updatedAt),
-		CreatedAt:    s.parseTime(rowData.createdAt),
-		Translations: make(map[string]*models.PostTranslationContent),
-		Metrics:      &models.PostMetrics{PostID: rowData.id, Views: 0, Likes: 0, Comments: 0},
+	rows, err := s.db.Query(ctx, sql, args...)
+	if err != nil {
+		return fmt.Errorf("metrics query failed: %w", err)
 	}
-	postsMap[rowData.id] = post
-	*postOrder = append(*postOrder, rowData.id)
-	return post
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var postID string
+		var name *string
+		var value *int64
+		if err := rows.Scan(&postID, &name, &value); err != nil {
+			return fmt.Errorf("scan failed: %w", err)
+		}
+
+		post, ok := byID[postID]
+		if !ok || name == nil || value == nil || post.Metrics == nil {
+			continue
+		}
+
+		switch *name {
+		case MetricNameViews:
+			post.Metrics.Views = *value
+		case MetricNameLikes:
+			post.Metrics.Likes = *value
+		case MetricNameComments:
+			post.Metrics.Comments = *value
+		}
+	}
+
+	return rows.Err()
+}
+
+// countPosts applies the same rules as crud.GetAllPaginated: a page shorter than
+// the limit already reveals the total, an estimate answers unfiltered listings,
+// and anything else counts exactly. The inner CTE limits posts rather than
+// joined rows, so len(posts) is what the limit was applied to.
+func (s *TranslationService) countPosts(ctx context.Context, mode crud.CountMode, limit, offset, returned int, conditions []query.Condition, titleSearch string) (*int, error) {
+	if mode == crud.CountNone {
+		return nil, nil
+	}
+
+	if limit <= 0 || returned < limit {
+		total := offset + returned
+		return &total, nil
+	}
+
+	if mode == crud.CountEstimate && len(conditions) == 0 && titleSearch == "" {
+		if total, ok := s.estimatePostCount(ctx); ok {
+			return total, nil
+		}
+	}
+
+	total, err := s.getPostCount(ctx, conditions, titleSearch)
+	if err != nil {
+		return nil, err
+	}
+	return &total, nil
+}
+
+// estimatePostCount reads the planner's row estimate. ok is false whenever the
+// figure cannot be trusted, leaving the caller to count exactly.
+func (s *TranslationService) estimatePostCount(ctx context.Context) (*int, bool) {
+	estimator, ok := s.db.Dialect().(database.RowEstimator)
+	if !ok {
+		return nil, false
+	}
+
+	estimateQuery, args, ok := estimator.EstimateRowsQuery("post")
+	if !ok {
+		return nil, false
+	}
+
+	var estimate int64
+	if err := s.db.QueryRow(ctx, estimateQuery, args...).Scan(&estimate); err != nil {
+		return nil, false
+	}
+
+	if estimate < 0 {
+		return nil, false
+	}
+
+	total := int(estimate)
+	return &total, true
 }
 
 func (s *TranslationService) parseTime(val interface{}) *time.Time {
@@ -539,34 +661,6 @@ func (s *TranslationService) parseTime(val interface{}) *time.Time {
 	}
 	t, _ := parseTimeValue(val)
 	return t
-}
-
-func (s *TranslationService) addTranslationToPost(post *models.Post, rowData *postRowData) error {
-	if rowData.locale == nil || rowData.content == nil {
-		return nil
-	}
-
-	translationContent, err := ParsePostTranslationContent(*rowData.content)
-	if err != nil {
-		return fmt.Errorf("failed to parse translation for post %s, locale %s: %w", rowData.id, *rowData.locale, err)
-	}
-	post.Translations[*rowData.locale] = translationContent
-	return nil
-}
-
-func (s *TranslationService) addMetricToPost(post *models.Post, rowData *postRowData) {
-	if rowData.metricName == nil || rowData.metricValue == nil || post.Metrics == nil {
-		return
-	}
-
-	switch *rowData.metricName {
-	case MetricNameViews:
-		post.Metrics.Views = *rowData.metricValue
-	case MetricNameLikes:
-		post.Metrics.Likes = *rowData.metricValue
-	case MetricNameComments:
-		post.Metrics.Comments = *rowData.metricValue
-	}
 }
 
 func (s *TranslationService) getPostCount(ctx context.Context, conditions []query.Condition, titleSearch string) (int, error) {
@@ -580,53 +674,6 @@ func (s *TranslationService) getPostCount(ctx context.Context, conditions []quer
 		return 0, fmt.Errorf("failed to get total count: %w", err)
 	}
 	return total, nil
-}
-
-func (s *TranslationService) buildJoinQuery(limit, offset int, conditions []query.Condition, orderBy []crud.OrderByClause, titleSearch string) (string, []interface{}, error) {
-	innerQuery := s.qb.Select("p.id", "p.user_id", "p.slug", "p.status", "p.visual", "p.published_at", "p.updated_at", "p.created_at").
-		From("post").As("p")
-	for _, cond := range conditions {
-		innerQuery = innerQuery.Where(cond)
-	}
-	if titleSearch != "" {
-		innerQuery = innerQuery.Where(s.buildTitleSearchCondition(titleSearch))
-	}
-	if len(orderBy) > 0 {
-		for _, order := range orderBy {
-			innerQuery = innerQuery.OrderBy(order.Column, order.Direction)
-		}
-	} else {
-		innerQuery = innerQuery.OrderBy("p.created_at", query.DESC)
-	}
-	innerQuery = innerQuery.Limit(limit).Offset(offset)
-
-	cteBuilder := s.qb.WithCTE("paginated_posts", innerQuery).
-		Select(
-			"p.id", "p.user_id", "p.slug", "p.status", "p.visual",
-			"p.published_at", "p.updated_at", "p.created_at",
-			"t.locale", "t.content",
-			"m.name", "m.value",
-		).
-		From("paginated_posts").
-		As("p").
-		LeftJoinAs("translations", "t", query.And(
-			query.ColEq("t.translatable_id", "p.id"),
-			query.Eq("t.translatable", TranslatableTypePost),
-		)).
-		LeftJoinAs("metrics", "m", query.And(
-			query.ColEq("m.resource_id", "p.id"),
-			query.Eq("m.resource", MetricResourcePost),
-		))
-
-	if len(orderBy) > 0 {
-		for _, order := range orderBy {
-			cteBuilder = cteBuilder.OrderBy(order.Column, order.Direction)
-		}
-	} else {
-		cteBuilder = cteBuilder.OrderBy("p.created_at", query.DESC)
-	}
-
-	return cteBuilder.Build()
 }
 
 func (s *TranslationService) buildCountQuery(conditions []query.Condition, titleSearch string) (string, []interface{}, error) {

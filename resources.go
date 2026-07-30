@@ -9,6 +9,7 @@ import (
 	"github.com/nicolasbonnici/gorest/database"
 	"github.com/nicolasbonnici/gorest/filter"
 	"github.com/nicolasbonnici/gorest/pagination"
+	"github.com/nicolasbonnici/gorest/processor"
 	"github.com/nicolasbonnici/gorest/query"
 	"github.com/nicolasbonnici/gorest/rbac"
 	"github.com/nicolasbonnici/gorest/response"
@@ -138,7 +139,7 @@ func (r *PostResource) List(c fiber.Ctx) error {
 	titleSearch := strings.TrimSpace(c.Query("search"))
 
 	ctx := c.Context()
-	result, err := r.translationService.LoadPostsWithTranslations(ctx, limit, offset, includeCount, conditions, orderBy, titleSearch)
+	result, err := r.translationService.LoadPostsWithTranslations(ctx, limit, offset, includeCount, conditions, orderBy, titleSearch, processor.DefaultCountMode())
 	if err != nil {
 		return response.SendError(c, fiber.StatusInternalServerError, err.Error())
 	}
