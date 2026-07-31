@@ -18,7 +18,7 @@ concurrency:
 
 env:
   GO_VERSION: '1.26.5'
-  GOLANGCI_LINT_VERSION: 'v1.64.8'
+  GOLANGCI_LINT_VERSION: 'v2.12.2'
 
 jobs:
   quality:
@@ -37,7 +37,7 @@ jobs:
       # Pinned and cached by the action rather than compiled from source at
       # @latest on every run.
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
           version: ${{ env.GOLANGCI_LINT_VERSION }}
 

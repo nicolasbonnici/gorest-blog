@@ -7,6 +7,10 @@
 GOPATH ?= $(shell go env GOPATH)
 export PATH := $(GOPATH)/bin:$(PATH)
 
+# Kept in step with .github/workflows/ci.yml. The v2 config format is not
+# readable by v1, so a stale v1 binary must be upgraded, not merely detected.
+GOLANGCI_LINT_VERSION := v2.12.2
+
 help: ## Show this help message
 	@echo "Available targets:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -20,24 +24,10 @@ install: ## Install dependencies, dev tools, and git hooks
 	@echo "✓ Dependencies installed"
 	@echo ""
 	@echo "[2/3] Installing development tools..."
-	@command -v golangci-lint >/dev/null 2>&1 || \
-		(echo "  Installing golangci-lint..." && \
-		go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)
-	@command -v staticcheck >/dev/null 2>&1 || \
-		(echo "  Installing staticcheck..." && \
-		go install honnef.co/go/tools/cmd/staticcheck@latest)
-	@command -v ineffassign >/dev/null 2>&1 || \
-		(echo "  Installing ineffassign..." && \
-		go install github.com/gordonklaus/ineffassign@latest)
-	@command -v misspell >/dev/null 2>&1 || \
-		(echo "  Installing misspell..." && \
-		go install github.com/client9/misspell/cmd/misspell@latest)
-	@command -v errcheck >/dev/null 2>&1 || \
-		(echo "  Installing errcheck..." && \
-		go install github.com/kisielk/errcheck@latest)
-	@command -v gocyclo >/dev/null 2>&1 || \
-		(echo "  Installing gocyclo..." && \
-		go install github.com/fzipp/gocyclo/cmd/gocyclo@latest)
+	@if ! golangci-lint --version 2>/dev/null | grep -qE 'version v?2\.'; then \
+		echo "  Installing golangci-lint $(GOLANGCI_LINT_VERSION)..."; \
+		GOWORK=off go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); \
+	fi
 	@echo "✓ Development tools installed"
 	@echo ""
 	@echo "[3/3] Installing git hooks..."
@@ -63,7 +53,7 @@ coverage: ## Run tests with coverage
 	@echo "To view HTML coverage report, run:"
 	@echo "  go tool cover -html=coverage.out"
 
-lint: ## Run all quality checks (gofmt, vet, staticcheck, misspell, gocyclo, errcheck)
+lint: ## Run golangci-lint (bundles staticcheck, errcheck, govet, gocyclo, misspell)
 	@echo "Running golangci-lint..."
 	@GOWORK=off $$(go env GOPATH)/bin/golangci-lint run ./...
 
