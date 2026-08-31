@@ -61,8 +61,8 @@ github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db h1:62I3jR2Em
 github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db/go.mod h1:l0dey0ia/Uv7NcFFVbCLtqEBQbrT4OCwCSKTEv6enCw=
 github.com/ncruces/go-strftime v1.0.0 h1:HMFp8mLCTPp341M/ZnA4qaf7ZlsbTc+miZjCLOFAw7w=
 github.com/ncruces/go-strftime v1.0.0/go.mod h1:Fwc5htZGVVkseilnfgOVb9mKy6w1naJmn9CehxcKcls=
-github.com/nicolasbonnici/gorest v0.6.15 h1:pG2QnI+bm0tKxfvBENdvNQ4M/eSoiyq8e9ooypDTiq0=
-github.com/nicolasbonnici/gorest v0.6.15/go.mod h1:iu0UC3yYSgb2iBkDFnf+M61Qh5S+7LmQoqK5lwxeOe8=
+github.com/nicolasbonnici/gorest v0.6.16 h1:UpLJu/IxF40Ogb30sBhOZ8V7A6iqSQQuXvV8W4E7l3g=
+github.com/nicolasbonnici/gorest v0.6.16/go.mod h1:JfsthCzPyqU8JOPPEm8JfNNveABH/xwrgWed4o7zTz4=
 github.com/nicolasbonnici/gorest-ai v0.6.16 h1:e32agGO5yLY1Y1aLGKOjuYHtdehwHPg2LjShQ55cMV0=
 github.com/nicolasbonnici/gorest-ai v0.6.16/go.mod h1:ANtb2OeSgid6+Ep0Y3rhhT5QejdSQil8lmgbxC3egfU=
 github.com/nicolasbonnici/gorest-taxonomy v0.6.16 h1:+mHULHrkot+wS+MbvbwX2uGpmTO7N0/JjS3sWIAbPHA=
