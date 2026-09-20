@@ -113,14 +113,14 @@ func (r *PostResource) List(c fiber.Ctx) error {
 	var conditions []query.Condition
 	filters := filter.NewFilterSetWithMapping(fieldMap, r.db.Dialect())
 	if err := filters.ParseFromQuery(queryParams); err != nil {
-		return response.SendError(c, fiber.StatusBadRequest, err.Error())
+		return response.SendError(c, fiber.StatusBadRequest, response.SafeMessage(err, "invalid filter"))
 	}
 	conditions = filters.Conditions()
 
 	var orderBy []crud.OrderByClause
 	ordering := filter.NewOrderSetWithMapping(fieldMap)
 	if err := ordering.ParseFromQuery(queryParams); err != nil {
-		return response.SendError(c, fiber.StatusBadRequest, err.Error())
+		return response.SendError(c, fiber.StatusBadRequest, response.SafeMessage(err, "invalid sort"))
 	}
 
 	orderClauses := ordering.OrderClauses()
@@ -141,7 +141,9 @@ func (r *PostResource) List(c fiber.Ctx) error {
 	ctx := c.Context()
 	result, err := r.translationService.LoadPostsWithTranslations(ctx, limit, offset, includeCount, conditions, orderBy, titleSearch, processor.DefaultCountMode())
 	if err != nil {
-		return response.SendError(c, fiber.StatusInternalServerError, err.Error())
+		// Whatever went wrong loading posts is the operator's to read, not the
+		// caller's: this path returned the driver's text verbatim.
+		return response.SendError(c, fiber.StatusInternalServerError, "database error")
 	}
 
 	if err := r.hooks.EnrichGetAll(ctx, c, result.Posts); err != nil {
@@ -170,7 +172,10 @@ func (r *PostResource) Get(c fiber.Ctx) error {
 	}
 
 	item, err := r.crud.GetByID(ctx, id)
-	if crud.IsNotFoundError(err) {
+	// Post.ID is declared `string` over a uuid column, so crud.checkID cannot
+	// reject a malformed id locally: the driver does, and that has to read as
+	// "no such post" rather than as a server fault.
+	if crud.IsNotFoundError(err) || crud.IsInvalidIDError(err) {
 		return response.SendError(c, fiber.StatusNotFound, "post not found")
 	}
 	if err != nil {

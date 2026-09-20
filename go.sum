@@ -63,6 +63,8 @@ github.com/ncruces/go-strftime v1.0.0 h1:HMFp8mLCTPp341M/ZnA4qaf7ZlsbTc+miZjCLOF
 github.com/ncruces/go-strftime v1.0.0/go.mod h1:Fwc5htZGVVkseilnfgOVb9mKy6w1naJmn9CehxcKcls=
 github.com/nicolasbonnici/gorest v0.7.1 h1:fFToFYcyBDllNUPE0EOhOTAtCnvbRyVz29TT929pYaQ=
 github.com/nicolasbonnici/gorest v0.7.1/go.mod h1:LWBad627fugSi4cbEq/Ok731kfGkguKEowETyuI5GjM=
+github.com/nicolasbonnici/gorest v0.7.2 h1:SsgSOH2HKan92KmWwM5tCLpwfhp8+1j/9aWJvqwQqEE=
+github.com/nicolasbonnici/gorest v0.7.2/go.mod h1:LWBad627fugSi4cbEq/Ok731kfGkguKEowETyuI5GjM=
 github.com/nicolasbonnici/gorest-ai v0.6.17 h1:ljbdU+fHGUWWeDCua9ROShxnnkRZYovMDAPinn9xdv4=
 github.com/nicolasbonnici/gorest-ai v0.6.17/go.mod h1:k/hpznYNvdxtET95AwRci0eRKFSv2PL3Xu1GexcKY2c=
 github.com/nicolasbonnici/gorest-taxonomy v0.6.17 h1:gtKdpFeelto4P0DAwqoJDBdXVnFkI1tGjUaj2YlcnC0=
