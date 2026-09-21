@@ -8,14 +8,14 @@ require (
 	github.com/gofiber/fiber/v3 v3.5.0
 	github.com/google/uuid v1.6.0
 	github.com/nicolasbonnici/gorest v0.7.2
-	github.com/nicolasbonnici/gorest-ai v0.6.17
-	github.com/nicolasbonnici/gorest-taxonomy v0.6.17
+	github.com/nicolasbonnici/gorest-ai v0.7.2
+	github.com/nicolasbonnici/gorest-taxonomy v0.7.2
 	github.com/schollz/progressbar/v3 v3.19.1
 	golang.org/x/term v0.46.0
 )
 
 require (
-	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.15 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.2 // indirect
@@ -46,8 +46,8 @@ require (
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	modernc.org/libc v1.75.7 // indirect
+	modernc.org/libc v1.77.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
-	modernc.org/sqlite v1.58.0 // indirect
+	modernc.org/sqlite v1.59.0 // indirect
 )
