@@ -379,8 +379,6 @@ func (h *PostHooks) validateCreateDTO(dto dtos.PostCreateDTO) error {
 		if err := h.validateTranslation(locale, translation); err != nil {
 			return err
 		}
-
-		h.sanitizeTranslation(translation)
 	}
 
 	return nil
@@ -410,8 +408,6 @@ func (h *PostHooks) validateUpdateDTO(dto dtos.PostUpdateDTO) error {
 			if err := h.validateTranslation(locale, translation); err != nil {
 				return err
 			}
-
-			h.sanitizeTranslation(translation)
 		}
 	}
 
@@ -432,18 +428,6 @@ func (h *PostHooks) validateTranslation(locale string, translation *dtos.PostTra
 	translation.Content = modelTranslation.Content
 
 	return nil
-}
-
-func (h *PostHooks) sanitizeTranslation(translation *dtos.PostTranslationContentDTO) {
-	modelTranslation := &models.PostTranslationContent{
-		Title:   translation.Title,
-		Content: translation.Content,
-	}
-
-	modelTranslation.Sanitize()
-
-	translation.Title = modelTranslation.Title
-	translation.Content = modelTranslation.Content
 }
 
 // A blank visual is stored as NULL so clients can clear it by sending an empty string.

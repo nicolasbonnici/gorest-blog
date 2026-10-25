@@ -53,7 +53,13 @@ func (p *PostTranslationContent) Validate() error {
 }
 
 func (p *PostTranslationContent) Sanitize() {
-	p.Title = html.EscapeString(p.Title)
+	// Clients send back the escaped title they read, so unescape fully first:
+	// escaping stays idempotent and titles already stacked by past saves heal.
+	title := p.Title
+	for unescaped := html.UnescapeString(title); unescaped != title; unescaped = html.UnescapeString(title) {
+		title = unescaped
+	}
+	p.Title = html.EscapeString(title)
 	// Content is markdown and should NOT be HTML-escaped as it breaks code blocks
 	// and markdown syntax. Markdown renderers handle XSS protection when converting to HTML.
 }

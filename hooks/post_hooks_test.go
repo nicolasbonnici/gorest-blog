@@ -8,6 +8,7 @@ import (
 
 	"github.com/nicolasbonnici/gorest/rbac"
 
+	"github.com/nicolasbonnici/gorest-blog/dtos"
 	"github.com/nicolasbonnici/gorest-blog/models"
 	"github.com/nicolasbonnici/gorest-blog/types"
 )
@@ -140,4 +141,33 @@ func TestNormalizeVisual(t *testing.T) {
 
 func ptr(s string) *string {
 	return &s
+}
+
+// TranslationService escapes titles when storing them, so the hooks must hand
+// them over raw or they get escaped twice ("un'app" stored as "un&amp;#39;app").
+func TestValidateDTO_leavesTitleUnescaped(t *testing.T) {
+	h := &PostHooks{}
+	title := "Fare vibe coding di un'app & <co>"
+
+	create := dtos.PostCreateDTO{
+		Slug:         "post",
+		Status:       types.PostStatusDrafted,
+		Translations: map[string]*dtos.PostTranslationContentDTO{"it": {Title: title, Content: "body"}},
+	}
+	if err := h.validateCreateDTO(create); err != nil {
+		t.Fatalf("validateCreateDTO: %v", err)
+	}
+	if got := create.Translations["it"].Title; got != title {
+		t.Fatalf("create title = %q, want %q", got, title)
+	}
+
+	update := dtos.PostUpdateDTO{
+		Translations: map[string]*dtos.PostTranslationContentDTO{"it": {Title: title, Content: "body"}},
+	}
+	if err := h.validateUpdateDTO(update); err != nil {
+		t.Fatalf("validateUpdateDTO: %v", err)
+	}
+	if got := update.Translations["it"].Title; got != title {
+		t.Fatalf("update title = %q, want %q", got, title)
+	}
 }

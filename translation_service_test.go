@@ -118,6 +118,24 @@ func TestPostTranslationContent_Sanitize(t *testing.T) {
 			expectedContent: "Content with <b>bold</b> & entities",
 		},
 		{
+			name: "already escaped title not escaped again",
+			input: &models.PostTranslationContent{
+				Title:   "Come creare un&#39;API &amp; altro",
+				Content: "Content",
+			},
+			expectedTitle:   "Come creare un&#39;API &amp; altro",
+			expectedContent: "Content",
+		},
+		{
+			name: "title escaped several times is repaired",
+			input: &models.PostTranslationContent{
+				Title:   "Come creare un&amp;amp;amp;amp;amp;#39;API REST",
+				Content: "Content",
+			},
+			expectedTitle:   "Come creare un&#39;API REST",
+			expectedContent: "Content",
+		},
+		{
 			name: "normal text unchanged",
 			input: &models.PostTranslationContent{
 				Title:   "Normal Title",
