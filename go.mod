@@ -7,7 +7,7 @@ toolchain go1.26.10
 require (
 	github.com/gofiber/fiber/v3 v3.6.1
 	github.com/google/uuid v1.6.0
-	github.com/nicolasbonnici/gorest v0.7.6
+	github.com/nicolasbonnici/gorest v0.7.7
 	github.com/nicolasbonnici/gorest-ai v0.7.4
 	github.com/nicolasbonnici/gorest-taxonomy v0.7.4
 	github.com/schollz/progressbar/v3 v3.19.1
