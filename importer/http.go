@@ -3,6 +3,7 @@ package importer
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -124,9 +125,13 @@ func handleImport(db database.Database) fiber.Handler {
 
 		result, err := executeImport(ctx, db, engine, req)
 		if err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(ImportResponse{
+			// Log the detailed cause server-side; never echo internal state
+			// (e.g. whether a given user_id exists) back to the client, as it
+			// is an account-enumeration oracle and information leak.
+			log.Printf("import failed (engine=%s): %v", engine, err)
+			return c.Status(fiber.StatusBadRequest).JSON(ImportResponse{
 				Success: false,
-				Message: fmt.Sprintf("Import failed: %v", err),
+				Message: "import request could not be processed",
 			})
 		}
 
@@ -163,7 +168,29 @@ func handleListEngines() fiber.Handler {
 	}
 }
 
-func RegisterRoutes(router fiber.Router, db database.Database) {
-	router.Post("/api/import/:engine", handleImport(db))
-	router.Get("/api/import/engines", handleListEngines())
+// RegisterRoutes mounts the import endpoints. The optional guards are applied
+// as middleware ahead of every import handler; callers pass authentication and
+// role checks here so the import surface is never anonymous. When no guards are
+// supplied (for example when auth is disabled in a dev build) the routes are
+// mounted bare.
+func RegisterRoutes(router fiber.Router, db database.Database, guards ...fiber.Handler) {
+	// Fiber runs the first handler, then the variadic ones, in order. Guards
+	// must therefore run ahead of the final handler, so the first guard (if any)
+	// becomes the lead handler and the rest trail it with the real handler last.
+	importChain := chainFor(guards, handleImport(db))
+	enginesChain := chainFor(guards, handleListEngines())
+
+	router.Post("/api/import/:engine", importChain[0], importChain[1:]...)
+	router.Get("/api/import/engines", enginesChain[0], enginesChain[1:]...)
+}
+
+// chainFor builds an ordered handler chain of the guards followed by the final
+// handler, as a []any slice suitable for Fiber's variadic route registration.
+func chainFor(guards []fiber.Handler, final fiber.Handler) []any {
+	chain := make([]any, 0, len(guards)+1)
+	for _, g := range guards {
+		chain = append(chain, g)
+	}
+	chain = append(chain, final)
+	return chain
 }
