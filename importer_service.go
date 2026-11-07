@@ -631,31 +631,29 @@ func (s *ImporterService) userExists(ctx context.Context, userID string) (bool, 
 }
 
 func (s *ImporterService) truncatePosts(ctx context.Context) error {
-	// Delete related data first (translations table uses polymorphic relationship)
-	// Delete translations for posts
-	deleteTranslations := "DELETE FROM translations WHERE translatable = 'post'"
-	if _, err := s.db.Exec(ctx, deleteTranslations); err != nil {
+	// Remove the polymorphic post translations first: the translatable table has
+	// no foreign key to post, so it must be cleared explicitly.
+	delTranslations, delTransArgs, err := s.qb.
+		Delete("translations").
+		Where(query.Eq("translatable", "post")).
+		Build()
+	if err != nil {
+		return fmt.Errorf("failed to build translations delete: %w", err)
+	}
+	if _, err := s.db.Exec(ctx, delTranslations, delTransArgs...); err != nil {
 		return fmt.Errorf("failed to delete post translations: %w", err)
 	}
 
-	// Delete posts (CASCADE will handle comments, likes, and other foreign key relations)
-	var truncateSQL string
-
-	switch s.db.DriverName() {
-	case "postgres":
-		// Use TRUNCATE CASCADE to automatically delete related records with foreign keys
-		truncateSQL = "TRUNCATE TABLE post CASCADE"
-	case "mysql":
-		// MySQL doesn't support CASCADE with TRUNCATE, use DELETE
-		truncateSQL = "DELETE FROM post"
-	case "sqlite":
-		// SQLite doesn't support TRUNCATE, use DELETE
-		truncateSQL = "DELETE FROM post"
-	default:
-		truncateSQL = "DELETE FROM post"
+	// Delete every post. No table holds a real foreign key to post (comments,
+	// likes and metrics are polymorphic and carry no post FK), so a plain DELETE
+	// is behaviourally equivalent to the former dialect-specific
+	// "TRUNCATE TABLE post CASCADE" while remaining injection-safe and portable
+	// across dialects through the query builder.
+	delPosts, delPostsArgs, err := s.qb.Delete("post").Build()
+	if err != nil {
+		return fmt.Errorf("failed to build post delete: %w", err)
 	}
-
-	if _, err := s.db.Exec(ctx, truncateSQL); err != nil {
+	if _, err := s.db.Exec(ctx, delPosts, delPostsArgs...); err != nil {
 		return fmt.Errorf("failed to truncate posts: %w", err)
 	}
 
@@ -787,6 +785,12 @@ func (s *ImporterService) insertComment(ctx context.Context, commentID, userID, 
 	return 0, nil
 }
 
+// buildCommentInsertSQL emits a dialect-specific parameterized upsert. It is not
+// expressed through the query builder because the PostgreSQL/SQLite deduplication
+// relies on a PARTIAL unique index
+// ("... WHERE remote_source_id IS NOT NULL AND remote_source IS NOT NULL"), whose
+// ON CONFLICT target predicate the builder's OnConflictDoNothing cannot currently
+// produce. All values are bound as parameters, so there is no injection surface.
 func (s *ImporterService) buildCommentInsertSQL(commentID, userID, postID string, parentID *string, comment engines.Comment, status string, createdAt *time.Time) (string, []interface{}) {
 	args := []interface{}{commentID, userID, postID, "post", parentID, comment.Content, status, comment.ID, "devto", createdAt}
 
