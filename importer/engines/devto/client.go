@@ -182,7 +182,10 @@ func (c *Client) extractArticleIDFromURL(articleURL string) (int, error) {
 		return 0, fmt.Errorf("invalid URL: %w", err)
 	}
 
-	if !strings.Contains(parsedURL.Host, "dev.to") {
+	// Match the host exactly (or a subdomain of dev.to). A substring check would
+	// accept hostile hosts such as "dev.to.evil.com".
+	host := strings.ToLower(parsedURL.Hostname())
+	if host != "dev.to" && !strings.HasSuffix(host, ".dev.to") {
 		return 0, fmt.Errorf("not a dev.to URL: %s", articleURL)
 	}
 
